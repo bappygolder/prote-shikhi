@@ -1247,15 +1247,13 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 168,
     fontWeight: '700',
-    includeFontPadding: true,
+    includeFontPadding: false,
     letterSpacing: 0,
-    lineHeight: 250,
     marginBottom: 118,
     textAlign: 'center',
   },
   vowelSignLetter: {
     fontSize: 140,
-    lineHeight: 220,
   },
   letterProgressMark: {
     position: 'absolute',
