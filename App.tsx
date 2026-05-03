@@ -658,8 +658,6 @@ export default function App() {
                 ]}
               />
               <Text
-                adjustsFontSizeToFit
-                numberOfLines={1}
                 style={[
                   styles.letter,
                   isCurrentVowelSign && styles.vowelSignLetter,
@@ -1247,9 +1245,8 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 168,
     fontWeight: '700',
-    includeFontPadding: false,
     letterSpacing: 0,
-    marginBottom: 118,
+    marginBottom: 60,
     textAlign: 'center',
   },
   vowelSignLetter: {
