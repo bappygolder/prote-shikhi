@@ -51,3 +51,8 @@ It does not currently look like a heavily branded consumer app. That is fine for
 
 Keep the practice screen sparse and functional. Add explanation through an optional info icon, not permanent instructional text. Give the future landing page more brand warmth, but keep the in-app trainer clean and practical.
 
+---
+
+## Bangla-First UI Decision
+
+Per the 2026-05-04 CEO directive, the trainer front page should use simple Bangla labels and show only two main progress bars: total learning progress and current-letter progress. Secondary details such as unlocked letters and session stats belong in the hamburger menu.

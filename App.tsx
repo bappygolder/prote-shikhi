@@ -19,6 +19,7 @@ import {
 } from './lib/learning';
 
 const STORAGE_KEY = 'bornomala.progress.v1';
+const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 
 type SessionStats = {
   attempts: number;
@@ -32,6 +33,37 @@ const initialSessionStats: SessionStats = {
   wrong: 0,
 };
 
+type ProgressBarProps = {
+  label: string;
+  completed: number;
+  total: number;
+  percent: number;
+};
+
+function toBanglaNumber(value: number | string) {
+  return String(value).replace(/\d/g, (digit) => BANGLA_DIGITS[Number(digit)]);
+}
+
+function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
+  const clampedPercent = Math.max(0, Math.min(100, percent));
+  const fillWidth = `${clampedPercent}%` as `${number}%`;
+
+  return (
+    <View style={styles.progressBlock}>
+      <View style={styles.progressTextRow}>
+        <Text style={styles.progressLabel}>{label}</Text>
+        <Text style={styles.progressValue}>
+          {toBanglaNumber(completed)}/{toBanglaNumber(total)} ·{' '}
+          {toBanglaNumber(clampedPercent)}%
+        </Text>
+      </View>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: fillWidth }]} />
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [progress, setProgress] = useState<ProgressByCard>({});
   const [sessionStats, setSessionStats] = useState<SessionStats>(
@@ -39,6 +71,7 @@ export default function App() {
   );
   const [currentCardId, setCurrentCardId] = useState(VOWEL_CARDS[0].id);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -86,6 +119,13 @@ export default function App() {
   const masteredCount = VOWEL_CARDS.filter(
     (card) => getProgressForCard(progress, card.id).mastered,
   ).length;
+  const totalMasteryPercent = Math.round(
+    (masteredCount / VOWEL_CARDS.length) * 100,
+  );
+  const currentMasteryPercent = Math.min(
+    100,
+    Math.round((currentProgress.correctCount / MASTERY_TARGET) * 100),
+  );
   const sessionAccuracy =
     sessionStats.attempts === 0
       ? 0
@@ -113,6 +153,7 @@ export default function App() {
     setProgress({});
     setSessionStats(initialSessionStats);
     setCurrentCardId(VOWEL_CARDS[0].id);
+    setIsMenuOpen(false);
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
       // Reset still updates the current screen even if storage cleanup fails.
     });
@@ -124,29 +165,38 @@ export default function App() {
 
       <View style={styles.shell}>
         <View style={styles.header}>
-          <Text style={styles.brand}>Bornomala</Text>
-          <Text style={styles.stage}>স্বরবর্ণ</Text>
+          <Pressable
+            accessibilityLabel="মেনু খুলুন"
+            onPress={() => setIsMenuOpen(true)}
+            style={({ pressed }) => [
+              styles.menuButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.menuIcon}>☰</Text>
+          </Pressable>
+
+          <View style={styles.titleBlock}>
+            <Text style={styles.brand}>পড়তে শিখি</Text>
+            <Text style={styles.stage}>স্বরবর্ণ</Text>
+          </View>
+
+          <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.progressGrid}>
-          <View style={styles.statBlock}>
-            <Text style={styles.statValue}>
-              {currentProgress.correctCount}/{MASTERY_TARGET}
-            </Text>
-            <Text style={styles.statLabel}>এই অক্ষর</Text>
-          </View>
-          <View style={styles.statBlock}>
-            <Text style={styles.statValue}>
-              {masteredCount}/{VOWEL_CARDS.length}
-            </Text>
-            <Text style={styles.statLabel}>আয়ত্ত</Text>
-          </View>
-          <View style={styles.statBlock}>
-            <Text style={styles.statValue}>
-              {unlockedCards.length}/{VOWEL_CARDS.length}
-            </Text>
-            <Text style={styles.statLabel}>খোলা</Text>
-          </View>
+        <View style={styles.progressStack}>
+          <ProgressBar
+            completed={masteredCount}
+            label="মোট শেখা"
+            percent={totalMasteryPercent}
+            total={VOWEL_CARDS.length}
+          />
+          <ProgressBar
+            completed={currentProgress.correctCount}
+            label="এই অক্ষর"
+            percent={currentMasteryPercent}
+            total={MASTERY_TARGET}
+          />
         </View>
 
         <View style={styles.card}>
@@ -159,14 +209,9 @@ export default function App() {
           </Text>
         </View>
 
-        <View style={styles.sessionRow}>
-          <Text style={styles.sessionText}>সেশন {sessionStats.attempts}</Text>
-          <Text style={styles.sessionText}>{sessionAccuracy}% ঠিক</Text>
-        </View>
-
         <View style={styles.actions}>
           <Pressable
-            accessibilityLabel="Mark wrong"
+            accessibilityLabel="ভুল হয়েছে"
             onPress={() => handleGrade(false)}
             style={({ pressed }) => [
               styles.actionButton,
@@ -178,7 +223,7 @@ export default function App() {
           </Pressable>
 
           <Pressable
-            accessibilityLabel="Mark right"
+            accessibilityLabel="ঠিক হয়েছে"
             onPress={() => handleGrade(true)}
             style={({ pressed }) => [
               styles.actionButton,
@@ -189,11 +234,77 @@ export default function App() {
             <Text style={[styles.actionText, styles.rightText]}>ঠিক</Text>
           </Pressable>
         </View>
-
-        <Pressable onPress={handleReset} style={styles.resetButton}>
-          <Text style={styles.resetText}>রিসেট</Text>
-        </Pressable>
       </View>
+
+      {isMenuOpen ? (
+        <View style={styles.menuLayer}>
+          <Pressable
+            accessibilityLabel="মেনু বন্ধ করুন"
+            onPress={() => setIsMenuOpen(false)}
+            style={styles.menuBackdrop}
+          />
+          <View style={styles.menuPanel}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>মেনু</Text>
+              <Pressable
+                accessibilityLabel="মেনু বন্ধ করুন"
+                onPress={() => setIsMenuOpen(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.closeText}>বন্ধ</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.menuList}>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>খোলা অক্ষর</Text>
+                <Text style={styles.menuValue}>
+                  {toBanglaNumber(unlockedCards.length)}/
+                  {toBanglaNumber(VOWEL_CARDS.length)}
+                </Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>সেশন</Text>
+                <Text style={styles.menuValue}>
+                  {toBanglaNumber(sessionStats.attempts)}
+                </Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>ঠিক</Text>
+                <Text style={styles.menuValue}>
+                  {toBanglaNumber(sessionStats.correct)}
+                </Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>ভুল</Text>
+                <Text style={styles.menuValue}>
+                  {toBanglaNumber(sessionStats.wrong)}
+                </Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>ঠিকের হার</Text>
+                <Text style={styles.menuValue}>
+                  {toBanglaNumber(sessionAccuracy)}%
+                </Text>
+              </View>
+            </View>
+
+            <Pressable
+              accessibilityLabel="আবার শুরু করুন"
+              onPress={handleReset}
+              style={({ pressed }) => [
+                styles.resetButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.resetText}>আবার শুরু</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -206,18 +317,40 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     justifyContent: 'space-between',
-    gap: 18,
+    gap: 16,
     paddingHorizontal: 20,
     paddingVertical: 18,
   },
   header: {
+    minHeight: 52,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'space-between',
+  },
+  menuButton: {
+    minHeight: 44,
+    width: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  menuIcon: {
+    color: '#111827',
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  titleBlock: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  headerSpacer: {
+    width: 44,
   },
   brand: {
     color: '#111827',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '800',
     letterSpacing: 0,
   },
   stage: {
@@ -226,32 +359,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0,
   },
-  progressGrid: {
-    flexDirection: 'row',
-    gap: 10,
+  progressStack: {
+    gap: 12,
   },
-  statBlock: {
-    flex: 1,
-    minHeight: 74,
+  progressBlock: {
+    gap: 8,
+  },
+  progressTextRow: {
+    minHeight: 24,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  progressLabel: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  progressValue: {
+    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  progressTrack: {
+    height: 13,
+    overflow: 'hidden',
     borderColor: '#e5ddc7',
     borderRadius: 8,
     borderWidth: 1,
     backgroundColor: '#fffaf0',
   },
-  statValue: {
-    color: '#111827',
-    fontSize: 21,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  statLabel: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0,
-    marginTop: 4,
+  progressFill: {
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#047857',
   },
   card: {
     flex: 1,
@@ -272,17 +416,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 214,
     textAlign: 'center',
-  },
-  sessionRow: {
-    minHeight: 24,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  sessionText: {
-    color: '#4b5563',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0,
   },
   actions: {
     flexDirection: 'row',
@@ -319,15 +452,94 @@ const styles = StyleSheet.create({
   rightText: {
     color: '#047857',
   },
-  resetButton: {
-    minHeight: 38,
+  menuLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17, 24, 39, 0.36)',
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: '78%',
+    maxWidth: 340,
+    borderRightColor: '#e5ddc7',
+    borderRightWidth: 1,
+    backgroundColor: '#fffaf0',
+    paddingHorizontal: 20,
+    paddingTop: 58,
+    paddingBottom: 24,
+  },
+  menuHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  menuTitle: {
+    color: '#111827',
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  closeButton: {
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  closeText: {
+    color: '#4b5563',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  menuList: {
+    gap: 0,
+    marginTop: 24,
+    borderTopColor: '#e5ddc7',
+    borderTopWidth: 1,
+  },
+  menuItem: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    borderBottomColor: '#e5ddc7',
+    borderBottomWidth: 1,
+  },
+  menuLabel: {
+    color: '#4b5563',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  menuValue: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  resetButton: {
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderColor: '#fecaca',
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#fff1f2',
+    marginTop: 'auto',
   },
   resetText: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#be123c',
+    fontSize: 17,
+    fontWeight: '800',
     letterSpacing: 0,
   },
 });
