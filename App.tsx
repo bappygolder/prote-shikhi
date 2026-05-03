@@ -17,6 +17,7 @@ import {
   MASTERY_TARGET,
   PRACTICE_PRESETS,
   type LetterCard,
+  type PracticePreset,
 } from './data/banglaLetters';
 import {
   applyGrade,
@@ -87,6 +88,14 @@ function getMasteryPercent(progress: ProgressByCard, cardId: string) {
 
 function getDisplayLetter(card: LetterCard) {
   return card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
+}
+
+function getPresetRangeLabel(preset: PracticePreset): string {
+  const { cards } = preset;
+  if (cards.length === 0) return '';
+  const first = getDisplayLetter(cards[0]);
+  const last = getDisplayLetter(cards[cards.length - 1]);
+  return cards.length === 1 ? first : `${first} → ${last}`;
 }
 
 function getPracticeCardsForList(
@@ -657,20 +666,24 @@ export default function App() {
                   },
                 ]}
               />
-              <Text
-                style={[
-                  styles.letter,
-                  isCurrentVowelSign && styles.vowelSignLetter,
-                ]}
-              >
-                {currentDisplayLetter}
-              </Text>
-              <LetterProgressMark
-                completed={currentProgress.correctCount}
-                letter={currentDisplayLetter}
-                percent={currentMasteryPercent}
-                total={MASTERY_TARGET}
-              />
+              <View style={styles.glyphZone}>
+                <Text
+                  style={[
+                    styles.letter,
+                    isCurrentVowelSign && styles.vowelSignLetter,
+                  ]}
+                >
+                  {currentDisplayLetter}
+                </Text>
+              </View>
+              <View style={styles.stripZone}>
+                <LetterProgressMark
+                  completed={currentProgress.correctCount}
+                  letter={currentDisplayLetter}
+                  percent={currentMasteryPercent}
+                  total={MASTERY_TARGET}
+                />
+              </View>
               {gradeFeedback ? (
                 <Animated.View
                   pointerEvents="none"
@@ -1043,7 +1056,7 @@ export default function App() {
                               isActive && styles.presetLabelActive,
                             ]}
                           >
-                            {preset.label}
+                            {getPresetRangeLabel(preset)}
                           </Text>
                           <Text
                             style={[
@@ -1213,8 +1226,7 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     minHeight: 250,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'column',
     overflow: 'hidden',
     borderColor: '#111827',
     borderRadius: 8,
@@ -1223,6 +1235,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 26,
     paddingTop: 26,
+  },
+  glyphZone: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripZone: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   cardAccent: {
     position: 'absolute',
@@ -1246,15 +1270,12 @@ const styles = StyleSheet.create({
     fontSize: 168,
     fontWeight: '700',
     letterSpacing: 0,
-    marginBottom: 60,
     textAlign: 'center',
   },
   vowelSignLetter: {
     fontSize: 140,
   },
   letterProgressMark: {
-    position: 'absolute',
-    bottom: '18%',
     width: '82%',
     maxWidth: 320,
     minHeight: 60,
