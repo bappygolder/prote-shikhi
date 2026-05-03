@@ -12,7 +12,7 @@
 ### In scope
 - [ ] Mobile-first Expo React Native app
 - [ ] Bangla-only flashcards with no helper text on the learner view
-- [ ] Vowels-first starter deck
+- [ ] Teacher-selectable letter/sign presets
 - [ ] Teacher marks each card as Right or Wrong
 - [ ] Mastery target: 10 correct responses per letter
 - [ ] Minimal session stats and progress display
@@ -43,13 +43,12 @@ See `docs/plans/bornomala-teacher-student-useful-sequence.md`.
 
 ---
 
-## Phase 2 — Sounds, Signs, and Words
+## Phase 2 — Sounds, Words, and Review
 
-**Goal**: Move from letter recognition into practical reading components.  
+**Goal**: Move from letter/sign recognition into practical reading components.  
 **Status**: Not started
 
 - Add optional audio pronunciation
-- Add vowel signs and consonant signs
 - Add combined letters
 - Add two-letter and three-letter words
 - Add richer flashcard history and daily review

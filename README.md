@@ -74,4 +74,4 @@ AI tool entry points: `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` — kept in sync, al
 
 ## Status
 
-Phase 1 — vowels-first flashcard MVP, local-only progress, no accounts.
+Phase 1 — teacher-assisted flashcard MVP with local-only progress and no accounts.

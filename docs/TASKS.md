@@ -40,7 +40,7 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 
 | # | Task | Priority | Effort | Notes |
 |---|---|---|---|---|
-| L-01 | Validate vowels-first sequence with first learner | [UNSCORED] | 1 session | Start simple and adjust from observation |
+| L-01 | Validate first preset sequence with first learner | [UNSCORED] | 1 session | Start simple and adjust from observation |
 | L-02 | Define next consonant set | [UNSCORED] | ~20 min | Add after first session feedback |
 | L-03 | Consider Unsure/Skip grading | [UNSCORED] | ~20 min | Deferred beyond MVP |
 | L-04 | Document teacher-selected practice sets after CTX-02 | [$1500 · U4 · S=4.8] | ~20 min | Keep `LEARNING-LOGIC.md` current |
@@ -52,8 +52,8 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 | # | Task | Priority | Effort | Notes |
 |---|---|---|---|---|
 | C-01 | Add full vowel deck | [UNSCORED] | ~10 min | Done 2026-05-04 |
-| C-02 | Add consonant deck | [UNSCORED] | ~20 min | Next learning stage |
-| C-03 | Add vowel signs | [UNSCORED] | ~30 min | Phase 2 |
+| C-02 | Add consonant deck | [UNSCORED] | ~20 min | Done 2026-05-04 |
+| C-03 | Add vowel signs | [UNSCORED] | ~30 min | Done 2026-05-04 |
 | C-04 | Add tiny starter practical word deck | [$3000 · U3 · S=4.5] | ~30-60 min | Only after content model supports mixed items |
 
 ## Product / Growth

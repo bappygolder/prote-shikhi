@@ -59,7 +59,7 @@ App.tsx             ← first flashcard trainer screen
 | Expo React Native | Fastest path to Android/iOS preview and mobile-first iteration. |
 | Bangla-only card face | Keeps learner attention on recognition, without helper text. |
 | Human-assisted grading | No audio/AI recognition needed for MVP; a teacher marks Right/Wrong. |
-| Vowels-first starter deck | Simple first learning set while the teaching flow is validated. |
+| Preset-based practice sets | Lets a teacher choose a small useful set without login. |
 | 10 correct responses for mastery | Simple fixed MVP rule; make configurable later if needed. |
 
 ---

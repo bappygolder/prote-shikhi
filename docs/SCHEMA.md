@@ -12,10 +12,18 @@ No remote database is planned for the first MVP. Progress can start in app memor
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | `string` | Stable letter id, e.g. `vowel-o` |
+| `id` | `string` | Stable letter id, e.g. `vowel-01` |
 | `letter` | `string` | Bangla glyph shown on card |
-| `group` | `vowel` \| `consonant` | Starter grouping |
+| `group` | `vowel` \| `vowelSign` \| `consonant` | Learning item group |
 | `order` | `number` | Default learning order |
+
+### PracticePreset
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `string` | Stable preset id, e.g. `vowels-early` |
+| `label` | `string` | Short Bangla label shown to the teacher |
+| `cards` | `LetterCard[]` | Ordered cards included in the preset |
 
 ### LetterProgress
 
