@@ -14,7 +14,7 @@ import {
 
 import {
   MASTERY_TARGET,
-  VOWEL_CARDS,
+  PRACTICE_PRESETS,
   type LetterCard,
 } from './data/banglaLetters';
 import {
@@ -27,6 +27,7 @@ import {
 
 const STORAGE_KEY = 'bornomala.progress.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+const DEFAULT_PRESET = PRACTICE_PRESETS[0];
 
 type AppTab = 'practice' | 'letters';
 type PracticeListId = 'unlocked' | 'all' | 'needsWork' | 'mastered';
@@ -48,6 +49,13 @@ type ProgressBarProps = {
   completed: number;
   total: number;
   percent: number;
+};
+
+type LetterProgressMarkProps = {
+  completed: number;
+  letter: string;
+  percent: number;
+  total: number;
 };
 
 const PRACTICE_LISTS: PracticeList[] = [
@@ -76,23 +84,28 @@ function getMasteryPercent(progress: ProgressByCard, cardId: string) {
   );
 }
 
+function getDisplayLetter(card: LetterCard) {
+  return card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
+}
+
 function getPracticeCardsForList(
   listId: PracticeListId,
+  presetCards: LetterCard[],
   progress: ProgressByCard,
   unlockedCards: LetterCard[],
 ) {
   if (listId === 'all') {
-    return VOWEL_CARDS;
+    return presetCards;
   }
 
   if (listId === 'needsWork') {
-    return VOWEL_CARDS.filter(
+    return presetCards.filter(
       (card) => !getProgressForCard(progress, card.id).mastered,
     );
   }
 
   if (listId === 'mastered') {
-    return VOWEL_CARDS.filter(
+    return presetCards.filter(
       (card) => getProgressForCard(progress, card.id).mastered,
     );
   }
@@ -102,10 +115,16 @@ function getPracticeCardsForList(
 
 function getEffectivePracticeCards(
   listId: PracticeListId,
+  presetCards: LetterCard[],
   progress: ProgressByCard,
   unlockedCards: LetterCard[],
 ) {
-  const listCards = getPracticeCardsForList(listId, progress, unlockedCards);
+  const listCards = getPracticeCardsForList(
+    listId,
+    presetCards,
+    progress,
+    unlockedCards,
+  );
 
   return listCards.length > 0 ? listCards : unlockedCards;
 }
@@ -162,12 +181,83 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
   );
 }
 
+function LetterProgressMark({
+  completed,
+  letter,
+  percent,
+  total,
+}: LetterProgressMarkProps) {
+  const clampedPercent = Math.max(0, Math.min(100, percent));
+  const clampedCompleted = Math.max(0, Math.min(total, completed));
+  const animatedPercent = useRef(new Animated.Value(clampedPercent)).current;
+  const fillWidth = animatedPercent.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
+  const breakpoints = Array.from(
+    { length: Math.max(0, total - 1) },
+    (_, index) => `${((index + 1) / total) * 100}%` as `${number}%`,
+  );
+
+  useEffect(() => {
+    Animated.timing(animatedPercent, {
+      toValue: clampedPercent,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [animatedPercent, clampedPercent]);
+
+  return (
+    <View style={styles.letterProgressMark}>
+      <Text
+        adjustsFontSizeToFit
+        numberOfLines={1}
+        style={styles.letterProgressGlyph}
+      >
+        {letter}
+      </Text>
+      <View style={styles.letterProgressBody}>
+        <View style={styles.letterProgressTopRow}>
+          <Text style={styles.letterProgressLabel}>এই অক্ষর</Text>
+          <Text style={styles.letterProgressValue}>
+            {toBanglaNumber(clampedCompleted)}/{toBanglaNumber(total)}
+          </Text>
+        </View>
+        <View
+          accessibilityLabel={`এই অক্ষর: ${toBanglaNumber(clampedCompleted)} / ${toBanglaNumber(total)}`}
+          accessibilityRole="progressbar"
+          accessibilityValue={{
+            max: total,
+            min: 0,
+            now: clampedCompleted,
+            text: `${toBanglaNumber(clampedCompleted)}/${toBanglaNumber(total)} · ${toBanglaNumber(clampedPercent)}%`,
+          }}
+          style={styles.letterProgressTrack}
+        >
+          <Animated.View
+            style={[styles.letterProgressFill, { width: fillWidth }]}
+          />
+          {breakpoints.map((left) => (
+            <View
+              key={left}
+              pointerEvents="none"
+              style={[styles.letterProgressBreakpoint, { left }]}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [progress, setProgress] = useState<ProgressByCard>({});
   const [sessionStats, setSessionStats] = useState<SessionStats>(
     initialSessionStats,
   );
-  const [currentCardId, setCurrentCardId] = useState(VOWEL_CARDS[0].id);
+  const [selectedPresetId, setSelectedPresetId] = useState(DEFAULT_PRESET.id);
+  const [currentCardId, setCurrentCardId] = useState(DEFAULT_PRESET.cards[0].id);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTab, setCurrentTab] = useState<AppTab>('practice');
@@ -239,17 +329,33 @@ export default function App() {
     };
   }, [ambientMotion]);
 
+  const selectedPreset =
+    PRACTICE_PRESETS.find((preset) => preset.id === selectedPresetId) ??
+    DEFAULT_PRESET;
+  const selectedPresetCards = selectedPreset.cards;
   const unlockedCards = useMemo(
-    () => getUnlockedCards(VOWEL_CARDS, progress),
-    [progress],
+    () => getUnlockedCards(selectedPresetCards, progress),
+    [progress, selectedPresetCards],
   );
   const practiceCards = useMemo(
-    () => getPracticeCardsForList(selectedPracticeList, progress, unlockedCards),
-    [progress, selectedPracticeList, unlockedCards],
+    () =>
+      getPracticeCardsForList(
+        selectedPracticeList,
+        selectedPresetCards,
+        progress,
+        unlockedCards,
+      ),
+    [progress, selectedPracticeList, selectedPresetCards, unlockedCards],
   );
   const effectivePracticeCards = useMemo(
-    () => getEffectivePracticeCards(selectedPracticeList, progress, unlockedCards),
-    [progress, selectedPracticeList, unlockedCards],
+    () =>
+      getEffectivePracticeCards(
+        selectedPracticeList,
+        selectedPresetCards,
+        progress,
+        unlockedCards,
+      ),
+    [progress, selectedPracticeList, selectedPresetCards, unlockedCards],
   );
 
   useEffect(() => {
@@ -258,20 +364,24 @@ export default function App() {
     );
 
     if (!cardIsAvailable) {
-      setCurrentCardId(effectivePracticeCards[0]?.id ?? VOWEL_CARDS[0].id);
+      setCurrentCardId(
+        effectivePracticeCards[0]?.id ?? selectedPresetCards[0].id,
+      );
     }
-  }, [currentCardId, effectivePracticeCards]);
+  }, [currentCardId, effectivePracticeCards, selectedPresetCards]);
 
   const currentCard =
     effectivePracticeCards.find((card) => card.id === currentCardId) ??
     effectivePracticeCards[0] ??
-    VOWEL_CARDS[0];
+    selectedPresetCards[0];
+  const currentDisplayLetter = getDisplayLetter(currentCard);
+  const isCurrentVowelSign = currentCard.group === 'vowelSign';
   const currentProgress = getProgressForCard(progress, currentCard.id);
-  const masteredCount = VOWEL_CARDS.filter(
+  const masteredCount = selectedPresetCards.filter(
     (card) => getProgressForCard(progress, card.id).mastered,
   ).length;
   const totalMasteryPercent = Math.round(
-    (masteredCount / VOWEL_CARDS.length) * 100,
+    (masteredCount / selectedPresetCards.length) * 100,
   );
   const currentMasteryPercent = getMasteryPercent(progress, currentCard.id);
   const sessionAccuracy =
@@ -281,13 +391,17 @@ export default function App() {
   const selectedListLabel =
     PRACTICE_LISTS.find((list) => list.id === selectedPracticeList)?.label ??
     PRACTICE_LISTS[0].label;
+  const stageLabel =
+    currentTab === 'practice'
+      ? `${selectedPreset.label} · ${selectedListLabel}`
+      : selectedPreset.label;
   const practiceListCounts: Record<PracticeListId, number> = {
     unlocked: unlockedCards.length,
-    all: VOWEL_CARDS.length,
-    needsWork: VOWEL_CARDS.filter(
+    all: selectedPresetCards.length,
+    needsWork: selectedPresetCards.filter(
       (card) => !getProgressForCard(progress, card.id).mastered,
     ).length,
-    mastered: VOWEL_CARDS.filter(
+    mastered: selectedPresetCards.filter(
       (card) => getProgressForCard(progress, card.id).mastered,
     ).length,
   };
@@ -397,9 +511,10 @@ export default function App() {
 
   function handleGrade(wasCorrect: boolean) {
     const nextProgress = applyGrade(progress, currentCard.id, wasCorrect);
-    const nextUnlockedCards = getUnlockedCards(VOWEL_CARDS, nextProgress);
+    const nextUnlockedCards = getUnlockedCards(selectedPresetCards, nextProgress);
     const nextPracticeCards = getEffectivePracticeCards(
       selectedPracticeList,
+      selectedPresetCards,
       nextProgress,
       nextUnlockedCards,
     );
@@ -422,7 +537,8 @@ export default function App() {
   function handleReset() {
     setProgress({});
     setSessionStats(initialSessionStats);
-    setCurrentCardId(VOWEL_CARDS[0].id);
+    setSelectedPresetId(DEFAULT_PRESET.id);
+    setCurrentCardId(DEFAULT_PRESET.cards[0].id);
     setSelectedPracticeList('unlocked');
     setCurrentTab('practice');
     setIsMenuOpen(false);
@@ -432,10 +548,33 @@ export default function App() {
   }
 
   function handleSelectPracticeList(listId: PracticeListId) {
-    const nextCards = getEffectivePracticeCards(listId, progress, unlockedCards);
+    const nextCards = getEffectivePracticeCards(
+      listId,
+      selectedPresetCards,
+      progress,
+      unlockedCards,
+    );
 
     setSelectedPracticeList(listId);
-    setCurrentCardId(nextCards[0]?.id ?? VOWEL_CARDS[0].id);
+    setCurrentCardId(nextCards[0]?.id ?? selectedPresetCards[0].id);
+  }
+
+  function handleSelectPreset(presetId: string) {
+    const preset =
+      PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
+      DEFAULT_PRESET;
+    const nextUnlockedCards = getUnlockedCards(preset.cards, progress);
+    const nextCards = getEffectivePracticeCards(
+      selectedPracticeList,
+      preset.cards,
+      progress,
+      nextUnlockedCards,
+    );
+
+    setSelectedPresetId(preset.id);
+    setCurrentCardId(nextCards[0]?.id ?? preset.cards[0].id);
+    setCurrentTab('practice');
+    handleCloseMenu();
   }
 
   function handleChooseLetter(card: LetterCard) {
@@ -445,6 +584,14 @@ export default function App() {
 
     if (!isInCurrentPracticeList) {
       setSelectedPracticeList('all');
+    }
+
+    const nextPreset = PRACTICE_PRESETS.find((preset) =>
+      preset.cards.some((presetCard) => presetCard.id === card.id),
+    );
+
+    if (nextPreset && nextPreset.id !== selectedPresetId) {
+      setSelectedPresetId(nextPreset.id);
     }
 
     setCurrentCardId(card.id);
@@ -461,9 +608,7 @@ export default function App() {
 
           <View style={styles.titleBlock}>
             <Text style={styles.brand}>পড়তে শিখি</Text>
-            <Text style={styles.stage}>
-              {currentTab === 'practice' ? selectedListLabel : 'অক্ষর'}
-            </Text>
+            <Text style={styles.stage}>{stageLabel}</Text>
           </View>
 
           <View style={styles.headerSpacer} />
@@ -476,13 +621,7 @@ export default function App() {
                 completed={masteredCount}
                 label="মোট শেখা"
                 percent={totalMasteryPercent}
-                total={VOWEL_CARDS.length}
-              />
-              <ProgressBar
-                completed={currentProgress.correctCount}
-                label="এই অক্ষর"
-                percent={currentMasteryPercent}
-                total={MASTERY_TARGET}
+                total={selectedPresetCards.length}
               />
             </View>
 
@@ -516,10 +655,19 @@ export default function App() {
               <Text
                 adjustsFontSizeToFit
                 numberOfLines={1}
-                style={styles.letter}
+                style={[
+                  styles.letter,
+                  isCurrentVowelSign && styles.vowelSignLetter,
+                ]}
               >
-                {currentCard.letter}
+                {currentDisplayLetter}
               </Text>
+              <LetterProgressMark
+                completed={currentProgress.correctCount}
+                letter={currentDisplayLetter}
+                percent={currentMasteryPercent}
+                total={MASTERY_TARGET}
+              />
               {gradeFeedback ? (
                 <Animated.View
                   pointerEvents="none"
@@ -577,12 +725,13 @@ export default function App() {
               <View>
                 <Text style={styles.lettersTitle}>অক্ষর</Text>
                 <Text style={styles.lettersMeta}>
-                  {toBanglaNumber(masteredCount)}/{toBanglaNumber(VOWEL_CARDS.length)} শেখা
+                  {toBanglaNumber(masteredCount)}/
+                  {toBanglaNumber(selectedPresetCards.length)} শেখা
                 </Text>
               </View>
               <View style={styles.lettersCountBadge}>
                 <Text style={styles.lettersCountText}>
-                  {toBanglaNumber(VOWEL_CARDS.length)}
+                  {toBanglaNumber(selectedPresetCards.length)}
                 </Text>
               </View>
             </View>
@@ -632,11 +781,12 @@ export default function App() {
               showsVerticalScrollIndicator={false}
               style={styles.letterGridScroll}
             >
-              {VOWEL_CARDS.map((card) => {
+              {selectedPresetCards.map((card) => {
                 const masteryPercent = getMasteryPercent(progress, card.id);
                 const isCurrentCard = currentCard.id === card.id;
                 const isMastered = masteryPercent >= 100;
                 const hasProgress = masteryPercent > 0 && !isMastered;
+                const displayLetter = getDisplayLetter(card);
 
                 return (
                   <Pressable
@@ -656,7 +806,7 @@ export default function App() {
                       numberOfLines={1}
                       style={styles.letterTileLetter}
                     >
-                      {card.letter}
+                      {displayLetter}
                     </Text>
                     <Text style={styles.letterPercent}>
                       {toBanglaNumber(masteryPercent)}%
@@ -785,14 +935,18 @@ export default function App() {
 
             <View style={styles.menuList}>
               <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>প্র্যাকটিস তালিকা</Text>
+                <Text style={styles.menuLabel}>প্রিসেট</Text>
+                <Text style={styles.menuValue}>{selectedPreset.label}</Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Text style={styles.menuLabel}>তালিকা</Text>
                 <Text style={styles.menuValue}>{selectedListLabel}</Text>
               </View>
               <View style={styles.menuItem}>
                 <Text style={styles.menuLabel}>খোলা অক্ষর</Text>
                 <Text style={styles.menuValue}>
                   {toBanglaNumber(unlockedCards.length)}/
-                  {toBanglaNumber(VOWEL_CARDS.length)}
+                  {toBanglaNumber(selectedPresetCards.length)}
                 </Text>
               </View>
               <View style={styles.menuItem}>
@@ -819,6 +973,53 @@ export default function App() {
                   {toBanglaNumber(sessionAccuracy)}%
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.presetSection}>
+              <Text style={styles.presetTitle}>প্রিসেট</Text>
+              <ScrollView
+                contentContainerStyle={styles.presetList}
+                showsVerticalScrollIndicator={false}
+                style={styles.presetScroll}
+              >
+                {PRACTICE_PRESETS.map((preset) => {
+                  const isActive = selectedPreset.id === preset.id;
+                  const presetMasteredCount = preset.cards.filter(
+                    (card) => getProgressForCard(progress, card.id).mastered,
+                  ).length;
+
+                  return (
+                    <Pressable
+                      accessibilityLabel={`${preset.label} প্রিসেট শুরু করুন`}
+                      key={preset.id}
+                      onPress={() => handleSelectPreset(preset.id)}
+                      style={({ pressed }) => [
+                        styles.presetButton,
+                        isActive && styles.presetButtonActive,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.presetLabel,
+                          isActive && styles.presetLabelActive,
+                        ]}
+                      >
+                        {preset.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.presetCount,
+                          isActive && styles.presetCountActive,
+                        ]}
+                      >
+                        {toBanglaNumber(presetMasteredCount)}/
+                        {toBanglaNumber(preset.cards.length)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <Pressable
@@ -885,51 +1086,52 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   progressStack: {
-    gap: 9,
+    gap: 8,
+    marginTop: -2,
   },
   progressBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    minHeight: 28,
+    gap: 10,
+    minHeight: 32,
   },
   progressLabel: {
-    color: '#111827',
-    width: 74,
-    fontSize: 15,
-    fontWeight: '800',
+    color: '#8b8790',
+    width: 68,
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: 0,
   },
   progressValue: {
-    color: '#6b7280',
+    color: '#8b8790',
     flexShrink: 0,
-    width: 48,
-    fontSize: 14,
-    fontWeight: '800',
+    width: 42,
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: 0,
     textAlign: 'right',
   },
   progressTrack: {
     position: 'relative',
     flex: 1,
-    height: 12,
+    height: 20,
     overflow: 'hidden',
-    borderColor: '#e5ddc7',
-    borderRadius: 8,
+    borderColor: '#e8deca',
+    borderRadius: 10,
     borderWidth: 1,
-    backgroundColor: '#fffaf0',
+    backgroundColor: '#fbf6e9',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 8,
-    backgroundColor: '#047857',
+    borderRadius: 10,
+    backgroundColor: '#88d4c9',
   },
   progressBreakpoint: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    top: 2,
+    bottom: 2,
     width: 1,
-    backgroundColor: '#d8ceb3',
+    backgroundColor: 'rgba(143, 130, 105, 0.18)',
   },
   card: {
     flex: 1,
@@ -942,6 +1144,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     backgroundColor: '#ffffff',
     paddingHorizontal: 24,
+    paddingBottom: 26,
+    paddingTop: 26,
   },
   cardAccent: {
     position: 'absolute',
@@ -962,12 +1166,87 @@ const styles = StyleSheet.create({
   },
   letter: {
     color: '#111827',
-    fontSize: 176,
+    fontSize: 168,
     fontWeight: '700',
-    includeFontPadding: false,
+    includeFontPadding: true,
     letterSpacing: 0,
-    lineHeight: 214,
+    lineHeight: 250,
+    marginBottom: 118,
     textAlign: 'center',
+  },
+  vowelSignLetter: {
+    fontSize: 140,
+    lineHeight: 220,
+  },
+  letterProgressMark: {
+    position: 'absolute',
+    bottom: '18%',
+    width: '82%',
+    maxWidth: 320,
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderColor: '#ece5d5',
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#fffdf7',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  letterProgressGlyph: {
+    color: '#b9b2a6',
+    width: 42,
+    fontSize: 32,
+    fontWeight: '900',
+    includeFontPadding: true,
+    letterSpacing: 0,
+    lineHeight: 48,
+    textAlign: 'center',
+  },
+  letterProgressBody: {
+    flex: 1,
+    gap: 6,
+  },
+  letterProgressTopRow: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  letterProgressLabel: {
+    color: '#8b8790',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  letterProgressValue: {
+    color: '#8b8790',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  letterProgressTrack: {
+    position: 'relative',
+    height: 18,
+    overflow: 'hidden',
+    borderColor: '#e5ddc7',
+    borderRadius: 9,
+    borderWidth: 1,
+    backgroundColor: '#f8f1e3',
+  },
+  letterProgressFill: {
+    height: '100%',
+    borderRadius: 9,
+    backgroundColor: '#f97316',
+  },
+  letterProgressBreakpoint: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    width: 1,
+    backgroundColor: 'rgba(143, 130, 105, 0.18)',
   },
   feedbackBadge: {
     position: 'absolute',
@@ -1153,11 +1432,11 @@ const styles = StyleSheet.create({
   },
   letterTileLetter: {
     color: '#111827',
-    fontSize: 58,
+    fontSize: 50,
     fontWeight: '800',
-    includeFontPadding: false,
+    includeFontPadding: true,
     letterSpacing: 0,
-    lineHeight: 70,
+    lineHeight: 76,
     textAlign: 'center',
   },
   letterPercent: {
@@ -1242,7 +1521,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     backgroundColor: '#fffaf0',
     paddingHorizontal: 20,
-    paddingTop: 58,
+    paddingTop: 52,
     paddingBottom: 24,
   },
   menuHeader: {
@@ -1272,12 +1551,12 @@ const styles = StyleSheet.create({
   },
   menuList: {
     gap: 0,
-    marginTop: 24,
+    marginTop: 16,
     borderTopColor: '#e5ddc7',
     borderTopWidth: 1,
   },
   menuItem: {
-    minHeight: 52,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1299,15 +1578,69 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textAlign: 'right',
   },
+  presetSection: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 14,
+  },
+  presetTitle: {
+    color: '#111827',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 10,
+  },
+  presetList: {
+    gap: 8,
+    paddingBottom: 6,
+  },
+  presetScroll: {
+    flex: 1,
+  },
+  presetButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderColor: '#e5ddc7',
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+  },
+  presetButtonActive: {
+    borderColor: '#111827',
+    backgroundColor: '#111827',
+  },
+  presetLabel: {
+    flex: 1,
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  presetLabelActive: {
+    color: '#ffffff',
+  },
+  presetCount: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  presetCountActive: {
+    color: '#facc15',
+  },
   resetButton: {
-    minHeight: 52,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderColor: '#fecaca',
     borderRadius: 8,
     borderWidth: 1,
     backgroundColor: '#fff1f2',
-    marginTop: 'auto',
+    marginTop: 12,
   },
   resetText: {
     color: '#be123c',
