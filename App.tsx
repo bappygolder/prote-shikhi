@@ -466,16 +466,7 @@ export default function App() {
             </Text>
           </View>
 
-          <Pressable
-            accessibilityLabel="মেনু খুলুন"
-            onPress={handleOpenMenu}
-            style={({ pressed }) => [
-              styles.menuButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.menuIcon}>☰</Text>
-          </Pressable>
+          <View style={styles.headerSpacer} />
         </View>
 
         {currentTab === 'practice' ? (
@@ -680,33 +671,6 @@ export default function App() {
 
       <View style={styles.bottomNav}>
         <Pressable
-          accessibilityLabel="প্র্যাকটিস স্ক্রিনে যান"
-          onPress={() => setCurrentTab('practice')}
-          style={({ pressed }) => [
-            styles.bottomTab,
-            currentTab === 'practice' && styles.bottomTabActive,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text
-            style={[
-              styles.bottomTabIcon,
-              currentTab === 'practice' && styles.bottomTabIconActive,
-            ]}
-          >
-            ▶
-          </Text>
-          <Text
-            style={[
-              styles.bottomTabText,
-              currentTab === 'practice' && styles.bottomTabTextActive,
-            ]}
-          >
-            প্র্যাকটিস
-          </Text>
-        </Pressable>
-
-        <Pressable
           accessibilityLabel="সব অক্ষর দেখুন"
           onPress={() => setCurrentTab('letters')}
           style={({ pressed }) => [
@@ -730,6 +694,60 @@ export default function App() {
             ]}
           >
             অক্ষর
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="শিখি স্ক্রিনে যান"
+          onPress={() => setCurrentTab('practice')}
+          style={({ pressed }) => [
+            styles.bottomTab,
+            currentTab === 'practice' && styles.bottomTabActive,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bottomTabIcon,
+              currentTab === 'practice' && styles.bottomTabIconActive,
+            ]}
+          >
+            ▶
+          </Text>
+          <Text
+            style={[
+              styles.bottomTabText,
+              currentTab === 'practice' && styles.bottomTabTextActive,
+            ]}
+          >
+            শিখি
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="মেনু খুলুন"
+          onPress={handleOpenMenu}
+          style={({ pressed }) => [
+            styles.bottomTab,
+            isMenuOpen && styles.bottomTabActive,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bottomTabIcon,
+              isMenuOpen && styles.bottomTabIconActive,
+            ]}
+          >
+            ☰
+          </Text>
+          <Text
+            style={[
+              styles.bottomTabText,
+              isMenuOpen && styles.bottomTabTextActive,
+            ]}
+          >
+            মেনু
           </Text>
         </Pressable>
       </View>
@@ -843,18 +861,6 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 44,
-  },
-  menuButton: {
-    minHeight: 44,
-    width: 44,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  menuIcon: {
-    color: '#111827',
-    fontSize: 30,
-    fontWeight: '800',
-    letterSpacing: 0,
   },
   titleBlock: {
     flex: 1,
@@ -1164,51 +1170,58 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   bottomNav: {
-    width: '100%',
-    maxWidth: 520,
+    width: '92%',
+    maxWidth: 440,
     alignSelf: 'center',
     flexDirection: 'row',
-    gap: 10,
-    borderTopColor: '#e5ddc7',
-    borderTopWidth: 1,
-    backgroundColor: '#fffaf0',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+    borderColor: '#e5e7eb',
+    borderRadius: 34,
+    borderWidth: 2,
+    backgroundColor: '#ffffff',
+    marginBottom: 14,
+    padding: 8,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
   },
   bottomTab: {
     flex: 1,
-    minHeight: 56,
-    flexDirection: 'row',
+    minHeight: 76,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderColor: '#e5ddc7',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#ffffff',
+    gap: 4,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
   },
   bottomTabActive: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
+    backgroundColor: '#f1f1f1',
   },
   bottomTabIcon: {
-    color: '#374151',
-    fontSize: 18,
+    color: '#6f7080',
+    fontSize: 27,
     fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 32,
   },
   bottomTabIconActive: {
-    color: '#facc15',
+    color: '#f4512a',
   },
   bottomTabText: {
-    color: '#374151',
-    fontSize: 15,
-    fontWeight: '900',
+    color: '#6f7080',
+    fontSize: 17,
+    fontWeight: '800',
     letterSpacing: 0,
+    lineHeight: 23,
   },
   bottomTabTextActive: {
-    color: '#ffffff',
+    color: '#f4512a',
   },
   menuLayer: {
     ...StyleSheet.absoluteFillObject,
