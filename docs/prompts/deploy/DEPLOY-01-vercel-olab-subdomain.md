@@ -1,6 +1,6 @@
 # DEPLOY-01 — Vercel Olab Subdomain
 
-**Status**: ⏳ Pending  
+**Status**: ✅ Done  
 **Author tool**: Codex CLI (GPT-5)  
 **Created**: 2026-05-04  
 **Last updated**: 2026-05-04  
@@ -27,6 +27,13 @@ Prepare the Expo web app for Vercel deployment and document the external steps n
 **Thinking**: On — deployment config has environment/tooling edge cases.
 
 ---
+
+## Completion notes
+
+- Added `build:web` and `serve:web` scripts.
+- Confirmed Expo exports the web app to `dist`.
+- Added root `vercel.json` for Vercel static hosting and SPA rewrites.
+- Documented dashboard and DNS steps in `README.md` and `docs/TASKS.md`.
 
 ## Prompt to paste
 
@@ -104,4 +111,3 @@ After Vercel deployment, open `https://porte-shikhi.olab.com.au` and confirm the
 
 Run `docs/prompts/ux/UX-02-landing-page.md`.
 ```
-

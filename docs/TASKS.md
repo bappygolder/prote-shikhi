@@ -28,11 +28,11 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 | G-01 | Initialize git repository | [UNSCORED] | ~2 min | Done 2026-05-04 |
 | G-02 | Create GitHub repository `bornomala` | [UNSCORED] | ~5 min | Blocked: local `gh` token is invalid; use `gh auth login` or create repo in GitHub UI |
 | G-03 | Add basic CI after app scaffolding | [UNSCORED] | ~20 min | Typecheck/build gate |
-| G-04 | Run `DEPLOY-01` Vercel web deployment prep | [$6000 · U4 · S=7.0] | ~45-90 min | Repo-side config and dashboard checklist |
-| G-05 | Create/import Vercel project | [$6000 · U4 · S=7.0] | ~10 min | External dashboard task |
-| G-06 | Attach `porte-shikhi.olab.com.au` in Vercel | [$6000 · U4 · S=7.0] | ~10 min | Requires DNS access |
-| G-07 | Add DNS record for `porte-shikhi.olab.com.au` | [$6000 · U4 · S=7.0] | ~10 min | External DNS provider task |
-| G-08 | Verify HTTPS and public load | [$6000 · U4 · S=7.0] | ~5 min | Final deployment check |
+| G-04 | Run `DEPLOY-01` Vercel web deployment prep | [$6000 · U4 · S=7.0] | ~45-90 min | Done 2026-05-04: added Expo web export script, Vercel config, and dashboard checklist |
+| G-05 | Create/import Vercel project | [$6000 · U4 · S=7.0] | ~10 min | External dashboard task: import GitHub repo, use build `npm run build:web`, output `dist` |
+| G-06 | Attach `porte-shikhi.olab.com.au` in Vercel | [$6000 · U4 · S=7.0] | ~10 min | Requires DNS access; add under Vercel Project Settings → Domains |
+| G-07 | Add DNS record for `porte-shikhi.olab.com.au` | [$6000 · U4 · S=7.0] | ~10 min | External DNS provider task: add the CNAME value Vercel displays for the subdomain |
+| G-08 | Verify HTTPS and public load | [$6000 · U4 · S=7.0] | ~5 min | Final deployment check after Vercel domain status turns valid |
 
 ---
 

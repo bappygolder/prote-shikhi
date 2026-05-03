@@ -25,6 +25,34 @@ Then press `i` for iOS Simulator, `a` for Android, or scan the QR with Expo Go.
 npm run typecheck   # tsc --noEmit
 ```
 
+## Deploy to Vercel
+
+The production web export writes to `dist/`.
+
+```bash
+npm run build:web
+npm run serve:web
+```
+
+Vercel should use:
+
+| Setting | Value |
+|---|---|
+| Framework preset | Other |
+| Build command | `npm run build:web` |
+| Output directory | `dist` |
+| Install command | `npm install` |
+
+External steps:
+
+1. Push this repo to GitHub.
+2. In Vercel, import the GitHub repo as a new project.
+3. Confirm the settings above, then deploy.
+4. Add `porte-shikhi.olab.com.au` under Project Settings → Domains.
+5. In the DNS provider for `olab.com.au`, add the CNAME record Vercel shows for `porte-shikhi`.
+6. Wait for Vercel to verify the domain and provision HTTPS.
+7. Open `https://porte-shikhi.olab.com.au` and confirm the trainer loads.
+
 ## Project layout
 
 ```
