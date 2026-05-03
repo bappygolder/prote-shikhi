@@ -61,3 +61,15 @@ App.tsx             ← first flashcard trainer screen
 | Human-assisted grading | No audio/AI recognition needed for MVP; a teacher marks Right/Wrong. |
 | Vowels-first starter deck | Simple first learning set while the teaching flow is validated. |
 | 10 correct responses for mastery | Simple fixed MVP rule; make configurable later if needed. |
+
+---
+
+## Related Docs
+
+| Doc | Purpose |
+|---|---|
+| `docs/PRODUCT-LOGIC.md` | Product users, business rules, and MVP boundaries |
+| `docs/LEARNING-LOGIC.md` | Card progress, unlock, and scheduler rules |
+| `docs/DESIGN-DIRECTION.md` | Current design read and future design direction |
+| `docs/DATABASE-PLAN.md` | Future database/account persistence direction |
+| `docs/PROMPT-GUIDE.md` | Prompt folders and execution rules |

@@ -17,6 +17,9 @@
 - [ ] Mastery target: 10 correct responses per letter
 - [ ] Minimal session stats and progress display
 - [ ] Local-only data for MVP
+- [ ] Teacher can choose a specific practice set without login
+- [ ] Help/info overlay explains the teacher-assisted flow
+- [ ] Public web deployment under `olab.com.au`
 
 ### Explicitly deferred
 - Audio pronunciation → Phase 2+
@@ -24,6 +27,19 @@
 - Unsure/Skip grading → Phase 2+
 - Accounts, cloud sync, and multi-device progress → Phase 2+
 - Custom text/word imports → Later
+
+### Next prompt sequence
+
+See `docs/plans/bornomala-teacher-student-useful-sequence.md`.
+
+1. `docs/prompts/admin/ADMIN-01-rename-to-porte-shikhi.md`
+2. `docs/prompts/admin/ADMIN-02-document-core-logic.md`
+3. `docs/prompts/build/CTX-02-teacher-quick-teach-mode.md`
+4. `docs/prompts/ux/UX-01-help-info-overlay.md`
+5. `docs/prompts/deploy/DEPLOY-01-vercel-olab-subdomain.md`
+6. `docs/prompts/ux/UX-02-landing-page.md`
+7. `docs/prompts/build/CTX-03-database-foundation.md`
+8. `docs/prompts/build/CTX-04-user-accounts-progress-sync.md`
 
 ---
 
