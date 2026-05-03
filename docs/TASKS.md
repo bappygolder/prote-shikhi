@@ -14,7 +14,7 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 |---|---|---|---|---|
 | A-01 | Scaffold Expo React Native app | [UNSCORED] | ~10 min | Done 2026-05-04 |
 | A-02 | Add first flashcard trainer screen | [UNSCORED] | ~30 min | Done 2026-05-04 |
-| A-03 | Add local progress persistence | [UNSCORED] | ~30 min | Can follow after first in-memory MVP |
+| A-03 | Add local progress persistence | [UNSCORED] | ~30 min | Done 2026-05-04 |
 
 ---
 
@@ -22,8 +22,8 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 
 | # | Task | Priority | Effort | Notes |
 |---|---|---|---|---|
-| G-01 | Initialize git repository | [UNSCORED] | ~2 min | Local repo is not initialized yet |
-| G-02 | Create GitHub repository `bornomala` | [UNSCORED] | ~5 min | Use GitHub CLI or dashboard depending on auth |
+| G-01 | Initialize git repository | [UNSCORED] | ~2 min | Done 2026-05-04 |
+| G-02 | Create GitHub repository `bornomala` | [UNSCORED] | ~5 min | Blocked: local `gh` token is invalid; use `gh auth login` or create repo in GitHub UI |
 | G-03 | Add basic CI after app scaffolding | [UNSCORED] | ~20 min | Typecheck/build gate |
 
 ---
@@ -52,7 +52,7 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 
 | # | Task | Priority | Effort | Notes |
 |---|---|---|---|---|
-| Q-01 | Run TypeScript/build checks before first commit | [UNSCORED] | ~5 min | Required before GitHub push |
+| Q-01 | Run TypeScript/build checks before first commit | [UNSCORED] | ~5 min | Done 2026-05-04 |
 
 ---
 

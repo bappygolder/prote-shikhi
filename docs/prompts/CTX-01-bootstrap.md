@@ -1,6 +1,6 @@
 # CTX-01 — Bootstrap First Flashcard MVP
 
-**Status**: In progress
+**Status**: Done
 **Project**: Bornomala
 **Last updated**: 2026-05-04
 
@@ -29,6 +29,6 @@ Scaffold the Expo React Native app and build the first mobile-first human-assist
 
 ## Verification
 
-- App starts locally
+- App starts locally at `http://localhost:19006`
 - Mobile viewport can review the first screen
-- TypeScript/build check passes if available
+- TypeScript check passes with `npm run typecheck`

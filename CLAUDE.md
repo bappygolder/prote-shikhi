@@ -98,7 +98,7 @@ This project uses the shared AI collaboration system. Framework docs live at `~/
 
 | CTX | File | Scope | Status |
 |---|---|---|---|
-| 01 | `docs/prompts/CTX-01-bootstrap.md` | Scaffold + first flashcard MVP | ⏳ |
+| 01 | `docs/prompts/CTX-01-bootstrap.md` | Scaffold + first flashcard MVP | ✅ |
 
 ---
 
