@@ -1,4 +1,4 @@
-export type LetterGroup = 'vowel' | 'vowelSign' | 'consonant';
+export type LetterGroup = 'vowel' | 'vowelSign' | 'consonant' | 'number';
 
 export type LetterCard = {
   id: string;
@@ -77,10 +77,24 @@ export const CONSONANT_CARDS: LetterCard[] = [
   { id: 'consonant-32', letter: 'হ', group: 'consonant', order: 53 },
 ];
 
+export const NUMBER_CARDS: LetterCard[] = [
+  { id: 'number-0', letter: '০', group: 'number', order: 54 },
+  { id: 'number-1', letter: '১', group: 'number', order: 55 },
+  { id: 'number-2', letter: '২', group: 'number', order: 56 },
+  { id: 'number-3', letter: '৩', group: 'number', order: 57 },
+  { id: 'number-4', letter: '৪', group: 'number', order: 58 },
+  { id: 'number-5', letter: '৫', group: 'number', order: 59 },
+  { id: 'number-6', letter: '৬', group: 'number', order: 60 },
+  { id: 'number-7', letter: '৭', group: 'number', order: 61 },
+  { id: 'number-8', letter: '৮', group: 'number', order: 62 },
+  { id: 'number-9', letter: '৯', group: 'number', order: 63 },
+];
+
 export const LETTER_CARDS: LetterCard[] = [
   ...VOWEL_CARDS,
   ...VOWEL_SIGN_CARDS,
   ...CONSONANT_CARDS,
+  ...NUMBER_CARDS,
 ];
 
 export const PRACTICE_PRESETS: PracticePreset[] = [
@@ -128,5 +142,10 @@ export const PRACTICE_PRESETS: PracticePreset[] = [
     id: 'consonants-last',
     label: 'শেষ ব্যঞ্জন',
     cards: CONSONANT_CARDS.slice(25),
+  },
+  {
+    id: 'numbers',
+    label: 'সংখ্যা',
+    cards: NUMBER_CARDS,
   },
 ];

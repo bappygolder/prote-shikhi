@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -264,6 +265,9 @@ export default function App() {
   const [selectedPracticeList, setSelectedPracticeList] =
     useState<PracticeListId>('unlocked');
   const [gradeFeedback, setGradeFeedback] = useState<GradeFeedback>(null);
+  const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [isPresetExpanded, setIsPresetExpanded] = useState(true);
+  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -474,6 +478,7 @@ export default function App() {
   }
 
   function handleCloseMenu() {
+    setShowInfoTooltip(false);
     Animated.timing(menuSlide, {
       toValue: 0,
       duration: 170,
@@ -925,113 +930,187 @@ export default function App() {
                 accessibilityLabel="মেনু বন্ধ করুন"
                 onPress={handleCloseMenu}
                 style={({ pressed }) => [
-                  styles.closeButton,
+                  styles.closeIconButton,
                   pressed && styles.buttonPressed,
                 ]}
               >
-                <Text style={styles.closeText}>বন্ধ</Text>
+                <Text style={styles.closeIconText}>✕</Text>
               </Pressable>
             </View>
 
-            <View style={styles.menuList}>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>প্রিসেট</Text>
-                <Text style={styles.menuValue}>{selectedPreset.label}</Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>তালিকা</Text>
-                <Text style={styles.menuValue}>{selectedListLabel}</Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>খোলা অক্ষর</Text>
-                <Text style={styles.menuValue}>
-                  {toBanglaNumber(unlockedCards.length)}/
-                  {toBanglaNumber(selectedPresetCards.length)}
-                </Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>সেশন</Text>
-                <Text style={styles.menuValue}>
-                  {toBanglaNumber(sessionStats.attempts)}
-                </Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>ঠিক</Text>
-                <Text style={styles.menuValue}>
-                  {toBanglaNumber(sessionStats.correct)}
-                </Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>ভুল</Text>
-                <Text style={styles.menuValue}>
-                  {toBanglaNumber(sessionStats.wrong)}
-                </Text>
-              </View>
-              <View style={styles.menuItem}>
-                <Text style={styles.menuLabel}>ঠিকের হার</Text>
-                <Text style={styles.menuValue}>
-                  {toBanglaNumber(sessionAccuracy)}%
-                </Text>
-              </View>
-            </View>
+            {showInfoTooltip && (
+              <Pressable
+                style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
+                onPress={() => setShowInfoTooltip(false)}
+              />
+            )}
 
-            <View style={styles.presetSection}>
-              <Text style={styles.presetTitle}>প্রিসেট</Text>
-              <ScrollView
-                contentContainerStyle={styles.presetList}
-                showsVerticalScrollIndicator={false}
-                style={styles.presetScroll}
-              >
-                {PRACTICE_PRESETS.map((preset) => {
-                  const isActive = selectedPreset.id === preset.id;
-                  const presetMasteredCount = preset.cards.filter(
-                    (card) => getProgressForCard(progress, card.id).mastered,
-                  ).length;
-
-                  return (
-                    <Pressable
-                      accessibilityLabel={`${preset.label} প্রিসেট শুরু করুন`}
-                      key={preset.id}
-                      onPress={() => handleSelectPreset(preset.id)}
-                      style={({ pressed }) => [
-                        styles.presetButton,
-                        isActive && styles.presetButtonActive,
-                        pressed && styles.buttonPressed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.presetLabel,
-                          isActive && styles.presetLabelActive,
-                        ]}
-                      >
-                        {preset.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.presetCount,
-                          isActive && styles.presetCountActive,
-                        ]}
-                      >
-                        {toBanglaNumber(presetMasteredCount)}/
-                        {toBanglaNumber(preset.cards.length)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <Pressable
-              accessibilityLabel="আবার শুরু করুন"
-              onPress={handleReset}
-              style={({ pressed }) => [
-                styles.resetButton,
-                pressed && styles.buttonPressed,
-              ]}
+            <ScrollView
+              contentContainerStyle={styles.menuScrollContent}
+              showsVerticalScrollIndicator={false}
+              style={styles.menuScroll}
             >
-              <Text style={styles.resetText}>আবার শুরু</Text>
-            </Pressable>
+              <View style={styles.menuList}>
+                <View style={styles.menuItem}>
+                  <Text style={styles.menuLabel}>প্রিসেট</Text>
+                  <Text style={styles.menuValue}>{selectedPreset.label}</Text>
+                </View>
+                <View style={styles.menuItem}>
+                  <Text style={styles.menuLabel}>তালিকা</Text>
+                  <Text style={styles.menuValue}>{selectedListLabel}</Text>
+                </View>
+              </View>
+
+              <View style={styles.collapsibleSection}>
+                <Pressable
+                  accessibilityLabel="পরিসংখ্যান মেনু"
+                  onPress={() => setIsStatsExpanded(!isStatsExpanded)}
+                  style={styles.collapsibleHeader}
+                >
+                  <Text style={styles.collapsibleTitle}>পরিসংখ্যান</Text>
+                  <Text style={styles.collapsibleIcon}>
+                    {isStatsExpanded ? '▼' : '▶'}
+                  </Text>
+                </Pressable>
+                {isStatsExpanded && (
+                  <View style={styles.collapsibleContent}>
+                    <View style={styles.menuItem}>
+                      <Text style={styles.menuLabel}>খোলা অক্ষর</Text>
+                      <Text style={styles.menuValue}>
+                        {toBanglaNumber(unlockedCards.length)}/
+                        {toBanglaNumber(selectedPresetCards.length)}
+                      </Text>
+                    </View>
+                    <View style={styles.menuItem}>
+                      <Text style={styles.menuLabel}>সেশন</Text>
+                      <Text style={styles.menuValue}>
+                        {toBanglaNumber(sessionStats.attempts)}
+                      </Text>
+                    </View>
+                    <View style={styles.menuItem}>
+                      <Text style={styles.menuLabel}>ঠিক</Text>
+                      <Text style={styles.menuValue}>
+                        {toBanglaNumber(sessionStats.correct)}
+                      </Text>
+                    </View>
+                    <View style={styles.menuItem}>
+                      <Text style={styles.menuLabel}>ভুল</Text>
+                      <Text style={styles.menuValue}>
+                        {toBanglaNumber(sessionStats.wrong)}
+                      </Text>
+                    </View>
+                    <View style={styles.menuItem}>
+                      <Text style={styles.menuLabel}>ঠিকের হার</Text>
+                      <Text style={styles.menuValue}>
+                        {toBanglaNumber(sessionAccuracy)}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              <View style={[styles.collapsibleSection, styles.collapsibleSectionPreset]}>
+                <Pressable
+                  accessibilityLabel="প্রিসেট মেনু"
+                  onPress={() => setIsPresetExpanded(!isPresetExpanded)}
+                  style={styles.collapsibleHeader}
+                >
+                  <Text style={styles.collapsibleTitle}>প্রিসেট</Text>
+                  <Text style={styles.collapsibleIcon}>
+                    {isPresetExpanded ? '▼' : '▶'}
+                  </Text>
+                </Pressable>
+                {isPresetExpanded && (
+                  <View style={styles.presetList}>
+                    {PRACTICE_PRESETS.map((preset) => {
+                      const isActive = selectedPreset.id === preset.id;
+                      const presetMasteredCount = preset.cards.filter(
+                        (card) => getProgressForCard(progress, card.id).mastered,
+                      ).length;
+
+                      return (
+                        <Pressable
+                          accessibilityLabel={`${preset.label} প্রিসেট শুরু করুন`}
+                          key={preset.id}
+                          onPress={() => handleSelectPreset(preset.id)}
+                          style={({ pressed }) => [
+                            styles.presetButton,
+                            isActive && styles.presetButtonActive,
+                            pressed && styles.buttonPressed,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.presetLabel,
+                              isActive && styles.presetLabelActive,
+                            ]}
+                          >
+                            {preset.label}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.presetCount,
+                              isActive && styles.presetCountActive,
+                            ]}
+                          >
+                            {toBanglaNumber(presetMasteredCount)}/
+                            {toBanglaNumber(preset.cards.length)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+
+              <Pressable
+                accessibilityLabel="আবার শুরু করুন"
+                onPress={handleReset}
+                style={({ pressed }) => [
+                  styles.resetButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.resetText}>আবার শুরু</Text>
+              </Pressable>
+
+              <View style={[styles.footerContainer, { zIndex: 20 }]}>
+                <Text style={styles.footerText}>
+                  Built by{' '}
+                  <Text
+                    onPress={() => Linking.openURL('https://www.linkedin.com/in/bappygolder/')}
+                    style={styles.footerLink}
+                  >
+                    Bappy Golder
+                  </Text>
+                </Text>
+                <View style={styles.poweredByRow}>
+                  <Text style={styles.footerText}>
+                    powered by{' '}
+                    <Text
+                      onPress={() => Linking.openURL('https://olab.com.au/')}
+                      style={styles.footerLink}
+                    >
+                      oLab
+                    </Text>
+                  </Text>
+                  <Pressable
+                    onPress={() => setShowInfoTooltip(!showInfoTooltip)}
+                    style={styles.infoIconContainer}
+                  >
+                    <Text style={styles.infoIcon}>ⓘ</Text>
+                  </Pressable>
+                </View>
+                {showInfoTooltip && (
+                  <View style={styles.tooltipContainer}>
+                    <Text style={styles.tooltipLabel}>LAST UPDATED</Text>
+                    <Text style={styles.tooltipValue}>Sunday, 27 April 2025, 3:40 pm (GMT+6)</Text>
+                    <View style={styles.tooltipDivider} />
+                    <Text style={styles.tooltipVersion}>v1.0.0</Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
           </Animated.View>
         </View>
       ) : null}
@@ -1537,17 +1616,26 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
   },
-  closeButton: {
-    minHeight: 40,
+  closeIconButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    backgroundColor: '#fee2e2',
+    borderRadius: 18,
   },
-  closeText: {
-    color: '#4b5563',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0,
+  closeIconText: {
+    color: '#ef4444',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
+  menuScroll: {
+    flex: 1,
+    marginTop: 4,
+  },
+  menuScrollContent: {
+    paddingBottom: 24,
   },
   menuList: {
     gap: 0,
@@ -1578,17 +1666,31 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textAlign: 'right',
   },
-  presetSection: {
-    flex: 1,
-    minHeight: 0,
+  collapsibleSection: {
     marginTop: 14,
   },
-  presetTitle: {
+  collapsibleSectionPreset: {
+    flex: 1,
+    minHeight: 0,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  collapsibleTitle: {
     color: '#111827',
     fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 10,
+  },
+  collapsibleIcon: {
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  collapsibleContent: {
+    marginTop: 4,
   },
   presetList: {
     gap: 8,
@@ -1647,5 +1749,71 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0,
+  },
+  footerContainer: {
+    marginTop: 24,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  footerText: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  poweredByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  footerLink: {
+    color: '#4b5563',
+    textDecorationLine: 'underline',
+  },
+  infoIconContainer: {
+    padding: 2,
+    marginTop: -4,
+  },
+  infoIcon: {
+    color: '#8b5cf6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  tooltipContainer: {
+    position: 'absolute',
+    bottom: 50,
+    backgroundColor: '#1f2937',
+    padding: 16,
+    borderRadius: 8,
+    width: 280,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  tooltipLabel: {
+    color: '#9ca3af',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  tooltipValue: {
+    color: '#f3f4f6',
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  tooltipDivider: {
+    height: 1,
+    backgroundColor: '#374151',
+    marginVertical: 12,
+  },
+  tooltipVersion: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
