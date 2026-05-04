@@ -6,6 +6,7 @@ import {
   Animated,
   Easing,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,6 +16,7 @@ import {
 } from 'react-native';
 
 import {
+  LETTER_CARDS,
   MASTERY_TARGET,
   PRACTICE_PRESETS,
   type LetterCard,
@@ -31,12 +33,40 @@ import {
 } from './lib/learning';
 
 const STORAGE_KEY = 'bornomala.progress.v1';
+const LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const DEFAULT_PRESET = PRACTICE_PRESETS[0];
-const APP_VERSION = 'v1.1.0';
+const APP_VERSION = 'v1.1.1';
 const LAST_UPDATED = 'Monday, 4 May 2026';
 
-type AppTab = 'practice' | 'letters';
+const PERSISTED_TABS = ['path', 'letters', 'practice'] as const;
+type PersistedTab = (typeof PERSISTED_TABS)[number];
+
+function isPersistedTab(value: unknown): value is PersistedTab {
+  return (
+    typeof value === 'string' &&
+    (PERSISTED_TABS as readonly string[]).includes(value)
+  );
+}
+
+function confirmDestructiveAction(
+  title: string,
+  message: string,
+  onConfirm: () => void,
+) {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'বাতিল', style: 'cancel' },
+    { text: 'রিসেট', style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
+type AppTab = 'path' | 'letters' | 'practice';
 type PracticeListId = 'unlocked' | 'all' | 'needsWork' | 'mastered';
 type GradeFeedback = 'right' | 'wrong' | null;
 
@@ -93,14 +123,6 @@ function getMasteryPercent(progress: ProgressByCard, cardId: string) {
 
 function getDisplayLetter(card: LetterCard) {
   return card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
-}
-
-function getPresetRangeLabel(preset: PracticePreset): string {
-  const { cards } = preset;
-  if (cards.length === 0) return '';
-  const first = getDisplayLetter(cards[0]);
-  const last = getDisplayLetter(cards[cards.length - 1]);
-  return cards.length === 1 ? first : `${first} → ${last}`;
 }
 
 function getPracticeCardsForList(
@@ -266,6 +288,145 @@ function LetterProgressMark({
   );
 }
 
+type UniverseHeatmapProps = {
+  cards: LetterCard[];
+  progress: ProgressByCard;
+  onTapCard: (card: LetterCard) => void;
+};
+
+function UniverseHeatmap({ cards, progress, onTapCard }: UniverseHeatmapProps) {
+  return (
+    <View style={styles.universeWrap}>
+      <View style={styles.universeGrid}>
+        {cards.map((card) => {
+          const cardProgress = getProgressForCard(progress, card.id);
+          const isMastered = cardProgress.mastered;
+          const hasProgress = !isMastered && cardProgress.correctCount > 0;
+          return (
+            <Pressable
+              accessibilityLabel={`${card.letter} অনুশীলন করুন`}
+              hitSlop={2}
+              key={card.id}
+              onPress={() => onTapCard(card)}
+              style={({ pressed }) => [
+                styles.universeCell,
+                hasProgress && styles.universeCellStarted,
+                isMastered && styles.universeCellMastered,
+                pressed && styles.universeCellPressed,
+              ]}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+type PresetNodeState = 'locked' | 'started' | 'mastered' | 'current';
+
+type PresetPathProps = {
+  presets: PracticePreset[];
+  progress: ProgressByCard;
+  currentPresetId: string | null;
+  onSelect: (presetId: string) => void;
+  onLongPressReset: (preset: PracticePreset) => void;
+};
+
+function PresetPath({
+  presets,
+  progress,
+  currentPresetId,
+  onSelect,
+  onLongPressReset,
+}: PresetPathProps) {
+  return (
+    <View style={styles.pathColumn}>
+      {presets.map((preset, index) => {
+        const masteredCount = preset.cards.filter(
+          (card) => getProgressForCard(progress, card.id).mastered,
+        ).length;
+        const totalCount = preset.cards.length;
+        const isMastered = masteredCount === totalCount && totalCount > 0;
+        const isCurrent = preset.id === currentPresetId;
+        const hasStarted = !isMastered && masteredCount > 0;
+        const state: PresetNodeState = isCurrent
+          ? 'current'
+          : isMastered
+            ? 'mastered'
+            : hasStarted
+              ? 'started'
+              : 'locked';
+
+        // Zigzag offset: even rows lean right, odd rows lean left.
+        const sideStyle = index % 2 === 0 ? styles.pathRowLeft : styles.pathRowRight;
+
+        return (
+          <View key={preset.id} style={[styles.pathRow, sideStyle]}>
+            <Pressable
+              accessibilityLabel={`${preset.label} প্রিসেট`}
+              delayLongPress={420}
+              onLongPress={() => onLongPressReset(preset)}
+              onPress={() => onSelect(preset.id)}
+              style={({ pressed }) => [
+                styles.pathNode,
+                state === 'started' && styles.pathNodeStarted,
+                state === 'mastered' && styles.pathNodeMastered,
+                state === 'current' && styles.pathNodeCurrent,
+                state === 'locked' && styles.pathNodeLocked,
+                pressed && styles.tilePressed,
+              ]}
+            >
+              {state === 'mastered' ? (
+                <Text style={styles.pathNodeTick}>✓</Text>
+              ) : (
+                <Text
+                  style={[
+                    styles.pathNodeGlyph,
+                    state === 'current' && styles.pathNodeGlyphCurrent,
+                    state === 'locked' && styles.pathNodeGlyphLocked,
+                  ]}
+                >
+                  {preset.cards[0]?.letter ?? '·'}
+                </Text>
+              )}
+            </Pressable>
+            <View style={styles.pathLabelBlock}>
+              <Text
+                style={[
+                  styles.pathLabel,
+                  state === 'locked' && styles.pathLabelLocked,
+                ]}
+              >
+                {preset.label}
+              </Text>
+              <Text
+                style={[
+                  styles.pathCount,
+                  state === 'locked' && styles.pathCountLocked,
+                ]}
+              >
+                {toBanglaNumber(masteredCount)}/{toBanglaNumber(totalCount)}
+              </Text>
+              {state === 'current' ? (
+                <Pressable
+                  accessibilityLabel={`${preset.label} শুরু করুন`}
+                  onPress={() => onSelect(preset.id)}
+                  style={({ pressed }) => [
+                    styles.startPill,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.startPillText}>শুরু</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function App() {
   const [progress, setProgress] = useState<ProgressByCard>({});
   const [sessionStats, setSessionStats] = useState<SessionStats>(
@@ -280,7 +441,6 @@ export default function App() {
     useState<PracticeListId>('unlocked');
   const [gradeFeedback, setGradeFeedback] = useState<GradeFeedback>(null);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
-  const [isPresetExpanded, setIsPresetExpanded] = useState(true);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
@@ -290,25 +450,34 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((savedProgress) => {
-        if (!isMounted || !savedProgress) {
+    Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(LAST_TAB_STORAGE_KEY),
+    ])
+      .then(([savedProgress, savedTab]) => {
+        if (!isMounted) {
           return;
         }
 
-        try {
-          const parsed: unknown = JSON.parse(savedProgress);
-          if (
-            parsed !== null &&
-            typeof parsed === 'object' &&
-            !Array.isArray(parsed)
-          ) {
-            setProgress(parsed as ProgressByCard);
-          } else {
-            console.warn('[bornomala] Stored progress had unexpected shape, ignoring.');
+        if (savedProgress) {
+          try {
+            const parsed: unknown = JSON.parse(savedProgress);
+            if (
+              parsed !== null &&
+              typeof parsed === 'object' &&
+              !Array.isArray(parsed)
+            ) {
+              setProgress(parsed as ProgressByCard);
+            } else {
+              console.warn('[bornomala] Stored progress had unexpected shape, ignoring.');
+            }
+          } catch (parseError) {
+            console.warn('[bornomala] Could not parse stored progress, starting fresh.', parseError);
           }
-        } catch (parseError) {
-          console.warn('[bornomala] Could not parse stored progress, starting fresh.', parseError);
+        }
+
+        if (isPersistedTab(savedTab)) {
+          setCurrentTab(savedTab);
         }
       })
       .catch(() => {
@@ -341,6 +510,16 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [isLoaded, progress]);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    AsyncStorage.setItem(LAST_TAB_STORAGE_KEY, currentTab).catch(() => {
+      // Tab persistence is a nice-to-have; ignore failures.
+    });
+  }, [currentTab, isLoaded]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -432,7 +611,13 @@ export default function App() {
   const stageLabel =
     currentTab === 'practice'
       ? `${selectedPreset.label} · ${selectedListLabel}`
-      : selectedPreset.label;
+      : currentTab === 'path'
+        ? 'শেখার পথ'
+        : selectedPreset.label;
+  const currentPathPresetId =
+    PRACTICE_PRESETS.find(
+      (preset) => !isPresetComplete(preset.cards, progress),
+    )?.id ?? null;
   const practiceListCounts: Record<PracticeListId, number> = {
     unlocked: unlockedCards.length,
     all: selectedPresetCards.length,
@@ -574,65 +759,43 @@ export default function App() {
   }
 
   function handleReset() {
-    Alert.alert(
+    confirmDestructiveAction(
       'পুরো অ্যাপ রিসেট',
       'পুরো অ্যাপ রিসেট করবেন? সব অগ্রগতি মুছে যাবে।',
-      [
-        { text: 'বাতিল', style: 'cancel' },
-        {
-          text: 'রিসেট',
-          style: 'destructive',
-          onPress: () => {
-            setProgress({});
-            setSessionStats(initialSessionStats);
-            setSelectedPresetId(DEFAULT_PRESET.id);
-            setCurrentCardId(DEFAULT_PRESET.cards[0].id);
-            setSelectedPracticeList('unlocked');
-            setCurrentTab('practice');
-            setIsMenuOpen(false);
-            AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
-              // Reset still updates the current screen even if storage cleanup fails.
-            });
-          },
-        },
-      ],
+      () => {
+        setProgress({});
+        setSessionStats(initialSessionStats);
+        setSelectedPresetId(DEFAULT_PRESET.id);
+        setCurrentCardId(DEFAULT_PRESET.cards[0].id);
+        setSelectedPracticeList('unlocked');
+        setCurrentTab('practice');
+        setIsMenuOpen(false);
+        AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
+          // Reset still updates the current screen even if storage cleanup fails.
+        });
+      },
     );
   }
 
   function handleResetLetter(card: LetterCard) {
-    Alert.alert(
+    confirmDestructiveAction(
       'অক্ষর রিসেট',
       `"${card.letter}"-এর অগ্রগতি মুছে ফেলবেন?`,
-      [
-        { text: 'বাতিল', style: 'cancel' },
-        {
-          text: 'রিসেট',
-          style: 'destructive',
-          onPress: () =>
-            setProgress((current) => resetCards(current, [card.id])),
-        },
-      ],
+      () => setProgress((current) => resetCards(current, [card.id])),
     );
   }
 
   function handleResetPreset(preset: PracticePreset) {
-    Alert.alert(
+    confirmDestructiveAction(
       'তালিকা রিসেট',
       `"${preset.label}"-এর সব অক্ষরের অগ্রগতি মুছে ফেলবেন?`,
-      [
-        { text: 'বাতিল', style: 'cancel' },
-        {
-          text: 'রিসেট',
-          style: 'destructive',
-          onPress: () =>
-            setProgress((current) =>
-              resetCards(
-                current,
-                preset.cards.map((card) => card.id),
-              ),
-            ),
-        },
-      ],
+      () =>
+        setProgress((current) =>
+          resetCards(
+            current,
+            preset.cards.map((card) => card.id),
+          ),
+        ),
     );
   }
 
@@ -703,7 +866,28 @@ export default function App() {
           <View style={styles.headerSpacer} />
         </View>
 
-        {currentTab === 'practice' ? (
+        {currentTab === 'path' ? (
+          <View style={styles.pathScreen}>
+            <UniverseHeatmap
+              cards={LETTER_CARDS}
+              progress={progress}
+              onTapCard={handleChooseLetter}
+            />
+            <ScrollView
+              contentContainerStyle={styles.pathScrollContent}
+              showsVerticalScrollIndicator={false}
+              style={styles.pathScroll}
+            >
+              <PresetPath
+                presets={PRACTICE_PRESETS}
+                progress={progress}
+                currentPresetId={currentPathPresetId}
+                onSelect={handleSelectPreset}
+                onLongPressReset={handleResetPreset}
+              />
+            </ScrollView>
+          </View>
+        ) : currentTab === 'practice' ? (
           <View style={styles.practiceContent}>
             <View style={styles.progressStack}>
               <ProgressBar
@@ -914,6 +1098,35 @@ export default function App() {
 
       <View style={styles.bottomNav}>
         <Pressable
+          accessibilityLabel="শেখার পথ দেখুন"
+          onPress={() => setCurrentTab('path')}
+          style={({ pressed }) => [
+            styles.bottomTab,
+            currentTab === 'path' && styles.bottomTabActive,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bottomTabIcon,
+              currentTab === 'path' && styles.bottomTabIconActive,
+            ]}
+          >
+            ⇡
+          </Text>
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={1}
+            style={[
+              styles.bottomTabText,
+              currentTab === 'path' && styles.bottomTabTextActive,
+            ]}
+          >
+            শেখার পথ
+          </Text>
+        </Pressable>
+
+        <Pressable
           accessibilityLabel="সব অক্ষর দেখুন"
           onPress={() => setCurrentTab('letters')}
           style={({ pressed }) => [
@@ -1093,89 +1306,6 @@ export default function App() {
                         {toBanglaNumber(sessionAccuracy)}%
                       </Text>
                     </View>
-                  </View>
-                )}
-              </View>
-
-              <View style={[styles.collapsibleSection, styles.collapsibleSectionPreset]}>
-                <Pressable
-                  accessibilityLabel="প্রিসেট মেনু"
-                  onPress={() => setIsPresetExpanded(!isPresetExpanded)}
-                  style={styles.collapsibleHeader}
-                >
-                  <Text style={styles.collapsibleTitle}>প্রিসেট</Text>
-                  <Text style={styles.collapsibleIcon}>
-                    {isPresetExpanded ? '▼' : '▶'}
-                  </Text>
-                </Pressable>
-                {isPresetExpanded && (
-                  <View style={styles.presetList}>
-                    {PRACTICE_PRESETS.map((preset) => {
-                      const isActive = selectedPreset.id === preset.id;
-                      const presetMasteredCount = preset.cards.filter(
-                        (card) => getProgressForCard(progress, card.id).mastered,
-                      ).length;
-                      const isComplete = isPresetComplete(preset.cards, progress);
-
-                      return (
-                        <Pressable
-                          accessibilityLabel={`${preset.label} প্রিসেট শুরু করুন`}
-                          key={preset.id}
-                          onPress={() => handleSelectPreset(preset.id)}
-                          style={({ pressed }) => [
-                            styles.presetButton,
-                            isActive && styles.presetButtonActive,
-                            pressed && styles.buttonPressed,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.presetLabel,
-                              isActive && styles.presetLabelActive,
-                            ]}
-                          >
-                            {getPresetRangeLabel(preset)}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.presetCount,
-                              isActive && styles.presetCountActive,
-                            ]}
-                          >
-                            {toBanglaNumber(presetMasteredCount)}/
-                            {toBanglaNumber(preset.cards.length)}
-                          </Text>
-                          {isComplete && (
-                            <Text
-                              style={[
-                                styles.presetCompleteTick,
-                                isActive && styles.presetCompleteTickActive,
-                              ]}
-                            >
-                              ✓
-                            </Text>
-                          )}
-                          <Pressable
-                            accessibilityLabel={`${preset.label} তালিকা রিসেট করুন`}
-                            hitSlop={8}
-                            onPress={() => handleResetPreset(preset)}
-                            style={({ pressed }) => [
-                              styles.presetResetButton,
-                              pressed && styles.buttonPressed,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.presetResetIcon,
-                                isActive && styles.presetResetIconActive,
-                              ]}
-                            >
-                              ↺
-                            </Text>
-                          </Pressable>
-                        </Pressable>
-                      );
-                    })}
                   </View>
                 )}
               </View>
@@ -1650,6 +1780,155 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  pathScreen: {
+    flex: 1,
+    gap: 14,
+  },
+  universeWrap: {
+    borderColor: '#ece5d5',
+    borderRadius: 10,
+    borderWidth: 1,
+    backgroundColor: '#fffdf7',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  universeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  universeCell: {
+    width: 18,
+    height: 18,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#e5ddc7',
+    backgroundColor: '#ffffff',
+  },
+  universeCellStarted: {
+    borderColor: '#fed7aa',
+    backgroundColor: '#fff7ed',
+  },
+  universeCellMastered: {
+    borderColor: '#86efac',
+    backgroundColor: '#86efac',
+  },
+  universeCellPressed: {
+    opacity: 0.6,
+  },
+  pathScroll: {
+    flex: 1,
+  },
+  pathScrollContent: {
+    paddingTop: 4,
+    paddingBottom: 24,
+  },
+  pathColumn: {
+    gap: 14,
+  },
+  pathRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  pathRowLeft: {
+    paddingLeft: 12,
+    justifyContent: 'flex-start',
+  },
+  pathRowRight: {
+    paddingLeft: 96,
+    justifyContent: 'flex-start',
+  },
+  pathNode: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: '#e5ddc7',
+    backgroundColor: '#ffffff',
+  },
+  pathNodeLocked: {
+    opacity: 0.55,
+  },
+  pathNodeStarted: {
+    borderColor: '#fdba74',
+    backgroundColor: '#fff7ed',
+  },
+  pathNodeMastered: {
+    borderColor: '#86efac',
+    backgroundColor: '#ecfdf3',
+  },
+  pathNodeCurrent: {
+    borderColor: '#111827',
+    borderWidth: 3,
+    backgroundColor: '#fffbeb',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  pathNodeGlyph: {
+    color: '#111827',
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 40,
+    textAlign: 'center',
+  },
+  pathNodeGlyphCurrent: {
+    color: '#f4512a',
+  },
+  pathNodeGlyphLocked: {
+    color: '#9ca3af',
+  },
+  pathNodeTick: {
+    color: '#047857',
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 34,
+  },
+  pathLabelBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  pathLabel: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  pathLabelLocked: {
+    color: '#9ca3af',
+  },
+  pathCount: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  pathCountLocked: {
+    color: '#b8b8b8',
+  },
+  startPill: {
+    alignSelf: 'flex-start',
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: '#f4512a',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  startPillText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   bottomNav: {
     width: '92%',
     maxWidth: 440,
@@ -1792,10 +2071,6 @@ const styles = StyleSheet.create({
   collapsibleSection: {
     marginTop: 14,
   },
-  collapsibleSectionPreset: {
-    flex: 1,
-    minHeight: 0,
-  },
   collapsibleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1814,74 +2089,6 @@ const styles = StyleSheet.create({
   },
   collapsibleContent: {
     marginTop: 4,
-  },
-  presetList: {
-    gap: 8,
-    paddingBottom: 6,
-  },
-  presetScroll: {
-    flex: 1,
-  },
-  presetButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    borderColor: '#e5ddc7',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-  },
-  presetButtonActive: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
-  },
-  presetLabel: {
-    flex: 1,
-    color: '#374151',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  presetLabelActive: {
-    color: '#ffffff',
-  },
-  presetCount: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  presetCountActive: {
-    color: '#facc15',
-  },
-  presetCompleteTick: {
-    color: '#047857',
-    fontSize: 16,
-    fontWeight: '900',
-    lineHeight: 18,
-  },
-  presetCompleteTickActive: {
-    color: '#86efac',
-  },
-  presetResetButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f3f4f6',
-  },
-  presetResetIcon: {
-    color: '#6b7280',
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 18,
-  },
-  presetResetIconActive: {
-    color: '#111827',
   },
   resetButton: {
     minHeight: 48,
