@@ -28,6 +28,27 @@ export function getProgressForCard(
   );
 }
 
+export function isPresetComplete(
+  cards: LetterCard[],
+  progress: ProgressByCard,
+): boolean {
+  return cards.every((card) => getProgressForCard(progress, card.id).mastered);
+}
+
+export function resetCards(
+  progress: ProgressByCard,
+  cardIds: string[],
+): ProgressByCard {
+  if (cardIds.length === 0) {
+    return progress;
+  }
+  const next = { ...progress };
+  for (const id of cardIds) {
+    delete next[id];
+  }
+  return next;
+}
+
 export function applyGrade(
   progress: ProgressByCard,
   cardId: string,

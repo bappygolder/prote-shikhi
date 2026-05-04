@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   Linking,
@@ -24,12 +25,16 @@ import {
   chooseNextCard,
   getProgressForCard,
   getUnlockedCards,
+  isPresetComplete,
+  resetCards,
   type ProgressByCard,
 } from './lib/learning';
 
 const STORAGE_KEY = 'bornomala.progress.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const DEFAULT_PRESET = PRACTICE_PRESETS[0];
+const APP_VERSION = 'v1.1.0';
+const LAST_UPDATED = 'Monday, 4 May 2026';
 
 type AppTab = 'practice' | 'letters';
 type PracticeListId = 'unlocked' | 'all' | 'needsWork' | 'mastered';
@@ -291,7 +296,20 @@ export default function App() {
           return;
         }
 
-        setProgress(JSON.parse(savedProgress) as ProgressByCard);
+        try {
+          const parsed: unknown = JSON.parse(savedProgress);
+          if (
+            parsed !== null &&
+            typeof parsed === 'object' &&
+            !Array.isArray(parsed)
+          ) {
+            setProgress(parsed as ProgressByCard);
+          } else {
+            console.warn('[bornomala] Stored progress had unexpected shape, ignoring.');
+          }
+        } catch (parseError) {
+          console.warn('[bornomala] Could not parse stored progress, starting fresh.', parseError);
+        }
       })
       .catch(() => {
         // The app still works if local progress cannot be read.
@@ -312,9 +330,16 @@ export default function App() {
       return;
     }
 
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(progress)).catch(() => {
-      // Keep the trainer responsive even if storage fails.
-    });
+    // Debounce writes so a flurry of grade taps coalesces into one save.
+    const timer = setTimeout(() => {
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(progress)).catch(() => {
+        // Keep the trainer responsive even if storage fails.
+      });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, [isLoaded, progress]);
 
   useEffect(() => {
@@ -549,16 +574,66 @@ export default function App() {
   }
 
   function handleReset() {
-    setProgress({});
-    setSessionStats(initialSessionStats);
-    setSelectedPresetId(DEFAULT_PRESET.id);
-    setCurrentCardId(DEFAULT_PRESET.cards[0].id);
-    setSelectedPracticeList('unlocked');
-    setCurrentTab('practice');
-    setIsMenuOpen(false);
-    AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
-      // Reset still updates the current screen even if storage cleanup fails.
-    });
+    Alert.alert(
+      'পুরো অ্যাপ রিসেট',
+      'পুরো অ্যাপ রিসেট করবেন? সব অগ্রগতি মুছে যাবে।',
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        {
+          text: 'রিসেট',
+          style: 'destructive',
+          onPress: () => {
+            setProgress({});
+            setSessionStats(initialSessionStats);
+            setSelectedPresetId(DEFAULT_PRESET.id);
+            setCurrentCardId(DEFAULT_PRESET.cards[0].id);
+            setSelectedPracticeList('unlocked');
+            setCurrentTab('practice');
+            setIsMenuOpen(false);
+            AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
+              // Reset still updates the current screen even if storage cleanup fails.
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function handleResetLetter(card: LetterCard) {
+    Alert.alert(
+      'অক্ষর রিসেট',
+      `"${card.letter}"-এর অগ্রগতি মুছে ফেলবেন?`,
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        {
+          text: 'রিসেট',
+          style: 'destructive',
+          onPress: () =>
+            setProgress((current) => resetCards(current, [card.id])),
+        },
+      ],
+    );
+  }
+
+  function handleResetPreset(preset: PracticePreset) {
+    Alert.alert(
+      'তালিকা রিসেট',
+      `"${preset.label}"-এর সব অক্ষরের অগ্রগতি মুছে ফেলবেন?`,
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        {
+          text: 'রিসেট',
+          style: 'destructive',
+          onPress: () =>
+            setProgress((current) =>
+              resetCards(
+                current,
+                preset.cards.map((card) => card.id),
+              ),
+            ),
+        },
+      ],
+    );
   }
 
   function handleSelectPracticeList(listId: PracticeListId) {
@@ -809,6 +884,8 @@ export default function App() {
                     accessibilityLabel={`${card.letter} প্র্যাকটিস করুন`}
                     key={card.id}
                     onPress={() => handleChooseLetter(card)}
+                    onLongPress={() => handleResetLetter(card)}
+                    delayLongPress={400}
                     style={({ pressed }) => [
                       styles.letterTile,
                       hasProgress && styles.letterTileStarted,
@@ -1038,6 +1115,7 @@ export default function App() {
                       const presetMasteredCount = preset.cards.filter(
                         (card) => getProgressForCard(progress, card.id).mastered,
                       ).length;
+                      const isComplete = isPresetComplete(preset.cards, progress);
 
                       return (
                         <Pressable
@@ -1067,6 +1145,34 @@ export default function App() {
                             {toBanglaNumber(presetMasteredCount)}/
                             {toBanglaNumber(preset.cards.length)}
                           </Text>
+                          {isComplete && (
+                            <Text
+                              style={[
+                                styles.presetCompleteTick,
+                                isActive && styles.presetCompleteTickActive,
+                              ]}
+                            >
+                              ✓
+                            </Text>
+                          )}
+                          <Pressable
+                            accessibilityLabel={`${preset.label} তালিকা রিসেট করুন`}
+                            hitSlop={8}
+                            onPress={() => handleResetPreset(preset)}
+                            style={({ pressed }) => [
+                              styles.presetResetButton,
+                              pressed && styles.buttonPressed,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.presetResetIcon,
+                                isActive && styles.presetResetIconActive,
+                              ]}
+                            >
+                              ↺
+                            </Text>
+                          </Pressable>
                         </Pressable>
                       );
                     })}
@@ -1105,6 +1211,7 @@ export default function App() {
                       oLab
                     </Text>
                   </Text>
+                  <Text style={styles.footerVersion}>{APP_VERSION}</Text>
                   <Pressable
                     onPress={() => setShowInfoTooltip(!showInfoTooltip)}
                     style={styles.infoIconContainer}
@@ -1115,9 +1222,9 @@ export default function App() {
                 {showInfoTooltip && (
                   <View style={styles.tooltipContainer}>
                     <Text style={styles.tooltipLabel}>LAST UPDATED</Text>
-                    <Text style={styles.tooltipValue}>Sunday, 27 April 2025, 3:40 pm (GMT+6)</Text>
+                    <Text style={styles.tooltipValue}>{LAST_UPDATED}</Text>
                     <View style={styles.tooltipDivider} />
-                    <Text style={styles.tooltipVersion}>v1.0.0</Text>
+                    <Text style={styles.tooltipVersion}>{APP_VERSION}</Text>
                   </View>
                 )}
               </View>
@@ -1750,6 +1857,32 @@ const styles = StyleSheet.create({
   presetCountActive: {
     color: '#facc15',
   },
+  presetCompleteTick: {
+    color: '#047857',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
+  presetCompleteTickActive: {
+    color: '#86efac',
+  },
+  presetResetButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3f4f6',
+  },
+  presetResetIcon: {
+    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  presetResetIconActive: {
+    color: '#111827',
+  },
   resetButton: {
     minHeight: 48,
     alignItems: 'center',
@@ -1770,6 +1903,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
     alignItems: 'center',
     position: 'relative',
+  },
+  footerVersion: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   footerText: {
     color: '#6b7280',
