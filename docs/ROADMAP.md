@@ -32,7 +32,7 @@
 
 See `docs/plans/bornomala-teacher-student-useful-sequence.md`.
 
-1. `docs/prompts/admin/ADMIN-01-rename-to-porte-shikhi.md`
+1. `docs/prompts/admin/ADMIN-03-rename-to-porashikhi.md` (supersedes ADMIN-01)
 2. `docs/prompts/admin/ADMIN-02-document-core-logic.md`
 3. `docs/prompts/build/CTX-02-teacher-quick-teach-mode.md`
 4. `docs/prompts/ux/UX-01-help-info-overlay.md`

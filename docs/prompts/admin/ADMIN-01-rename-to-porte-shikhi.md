@@ -1,6 +1,8 @@
 # ADMIN-01 — Rename To Porte Shikhi
 
-**Status**: ⏳ Pending  
+> **Status: ❌ Superseded** by [`ADMIN-03-rename-to-porashikhi.md`](./ADMIN-03-rename-to-porashikhi.md). Kept as historical record. The chosen rename target is now `Porashikhi / পড়াশিখি`, not `Porte Shikhi`. Do not execute this prompt.
+
+**Status**: ❌ Superseded  
 **Author tool**: Codex CLI (GPT-5)  
 **Created**: 2026-05-04  
 **Last updated**: 2026-05-04  

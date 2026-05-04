@@ -14,7 +14,7 @@ Make the app useful to a teacher and student as soon as possible, then layer dep
 
 | Rank | Prompt | Why now |
 |---:|---|---|
-| 1 | `ADMIN-01-rename-to-porte-shikhi.md` | Naming should settle before URLs, landing copy, database names, and screenshots. |
+| 1 | `ADMIN-03-rename-to-porashikhi.md` | Naming should settle before URLs, landing copy, database names, and screenshots. (Was `ADMIN-01-rename-to-porte-shikhi.md` — superseded; final name is `Porashikhi / পড়াশিখি`.) |
 | 2 | `ADMIN-02-document-core-logic.md` | Keeps product, learning, design, and database assumptions explicit before the app grows. |
 | 3 | `CTX-02-teacher-quick-teach-mode.md` | Highest usefulness: lets a teacher choose what to practice without login. |
 | 4 | `UX-01-help-info-overlay.md` | New teachers need a small explanation without cluttering the practice screen. |

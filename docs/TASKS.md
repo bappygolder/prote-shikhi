@@ -15,7 +15,7 @@ Quick tasks, configuration jobs, and one-off improvements that don't belong in t
 | A-01 | Scaffold Expo React Native app | [UNSCORED] | ~10 min | Done 2026-05-04 |
 | A-02 | Add first flashcard trainer screen | [UNSCORED] | ~30 min | Done 2026-05-04 |
 | A-03 | Add local progress persistence | [UNSCORED] | ~30 min | Done 2026-05-04 |
-| A-04 | Run `ADMIN-01` rename to `Porte Shikhi` | [$1000 · U5 · S=5.5] | ~20 min | Do before deployment/domain naming |
+| A-04 | Run `ADMIN-03` rename to `Porashikhi` | [$1000 · U5 · S=5.5] | ~20 min | Do before deployment/domain naming. Supersedes the old ADMIN-01 (Porte Shikhi) target. |
 | A-05 | Run `CTX-02` teacher quick teach mode | [$7000 · U5 · S=8.5] | ~1-2 hrs | Highest usefulness for teacher/student |
 | A-06 | Run `UX-01` help/info overlay | [$2500 · U5 · S=6.3] | ~30-45 min | Explains flow without clutter |
 

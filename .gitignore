@@ -42,3 +42,6 @@ yarn-error.*
 
 # scratch
 temp/
+
+# Claude Code runtime
+.claude/
