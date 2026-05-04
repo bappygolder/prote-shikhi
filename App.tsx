@@ -1975,10 +1975,10 @@ const styles = StyleSheet.create({
   },
   bottomTabText: {
     color: '#6f7080',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 23,
+    lineHeight: 21,
   },
   bottomTabTextActive: {
     color: '#f4512a',
