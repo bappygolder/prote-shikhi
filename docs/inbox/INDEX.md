@@ -1,6 +1,6 @@
-# Inbox — [Project Name]
+# Inbox — Bornomala
 
-**Last updated**: YYYY-MM-DD
+**Last updated**: 2026-05-04
 
 Items waiting on Bappy's personal attention for this project.
 
@@ -16,6 +16,6 @@ _No open decisions._
 
 _No open actions._
 
-## 💬 Discuss (0)
+## 💬 Discuss (1)
 
-_No open threads._
+- [2026-05-04 — First teaching session UX report](discuss/2026-05-04-bornomala-first-teaching-session-ux.md) — raw capture; process via [`UX-03`](../prompts/ux/UX-03-process-first-teaching-session.md)

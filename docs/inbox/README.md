@@ -16,3 +16,7 @@ For the full system doc, see [`~/.claude/shared/INBOX-SYSTEM.md`](../../../.clau
 Open items are listed one-line each in [`INDEX.md`](INDEX.md).
 
 Global dashboard across all projects: `~/.claude/shared/INBOX.md`.
+
+## User-experience reports
+
+Reports from real teaching sessions or user tests are filed under [`discuss/`](discuss/) using the filename pattern `YYYY-MM-DD-bornomala-<session-tag>-ux.md`. Each report is a raw, unprocessed capture grouped by surface (Path tab, Occor tab, Shiki, menu, etc.) and ends with a pointer to a follow-up UX prompt that fans the observations out into proper plans, decisions, and follow-up prompts. Do not act on individual items inside a UX report directly — process them through the linked follow-up prompt.
