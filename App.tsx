@@ -28,8 +28,10 @@ import {
   getProgressForCard,
   getUnlockedCards,
   isPresetComplete,
+  migrateProgress,
   resetCards,
   type ProgressByCard,
+  type ProgressState,
 } from './lib/learning';
 
 const STORAGE_KEY = 'bornomala.progress.v1';
@@ -462,17 +464,10 @@ export default function App() {
         if (savedProgress) {
           try {
             const parsed: unknown = JSON.parse(savedProgress);
-            if (
-              parsed !== null &&
-              typeof parsed === 'object' &&
-              !Array.isArray(parsed)
-            ) {
-              setProgress(parsed as ProgressByCard);
-            } else {
-              console.warn('[bornomala] Stored progress had unexpected shape, ignoring.');
-            }
+            const state = migrateProgress(parsed);
+            setProgress(state.byCard);
           } catch (parseError) {
-            console.warn('[bornomala] Could not parse stored progress, starting fresh.', parseError);
+            console.warn('[bornomala] Could not migrate stored progress, starting fresh.', parseError);
           }
         }
 
@@ -501,7 +496,8 @@ export default function App() {
 
     // Debounce writes so a flurry of grade taps coalesces into one save.
     const timer = setTimeout(() => {
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(progress)).catch(() => {
+      const toPersist: ProgressState = { schemaVersion: 2, byCard: progress };
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist)).catch(() => {
         // Keep the trainer responsive even if storage fails.
       });
     }, 300);
