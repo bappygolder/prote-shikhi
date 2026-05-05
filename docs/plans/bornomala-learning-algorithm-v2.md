@@ -1,7 +1,7 @@
 # Bornomala — Learning Algorithm v2
 
 **Last updated**: 2026-05-05
-**Status**: ⏳ ON HOLD pending spec lock — see banner below.
+**Status**: ✅ Spec is implementation-ready (`v2.0-draft-3`). Proceed with this plan once Bappy confirms timing. See banner below.
 **Supersedes**: the UX-03 stub names `bornomala-letter-stats-tracking.md` and `bornomala-adaptive-lesson-sizing.md` (do not write those separately — this plan covers both).
 **Coordinates with**: `bornomala-shiki-continuous-progress.md` (UI bar), `bornomala-occor-tab-redesign.md` (teacher stats surface). Those plans consume the data this one produces; they are NOT in scope here.
 

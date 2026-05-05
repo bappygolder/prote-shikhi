@@ -1,8 +1,8 @@
 # Bornomala — Learning Algorithm Specification
 
-**Version**: v2.0-draft-2
+**Version**: v2.0-draft-3 (implementation-ready)
 **Last updated**: 2026-05-05
-**Status**: DRAFT — pseudocode form. Not yet implemented.
+**Status**: All blocking open questions locked or given a default. Ready to implement; refine via review cadence.
 **Authors**: Bappy + Claude (Opus 4.7)
 **Review cadence**: After every real teaching session, this spec gets a review pass. See [`docs/inbox/do/2026-05-05-bornomala-spec-review-cadence.md`](inbox/do/2026-05-05-bornomala-spec-review-cadence.md).
 
@@ -148,8 +148,9 @@ These are the knobs. Every behavior change should change one of these and re-run
 ```ts
 const MASTERY_TARGET = 10;             // streak required to set mastered=true
 const RECENT_WINDOW = 6;               // size of recent-results rolling buffer
-const WARMUP_PER_CARD = 5;             // first N attempts on each card don't count toward top bar
-                                       // see OQ-W (§17) for exact exit condition
+const WARMUP_PER_CARD = 5;             // per-card warm-up budget: 5 cumulative CORRECTS before counting starts
+                                       // wrongs during warm-up don't penalize the budget; they still affect penalty
+                                       // streak counting begins on the 6th correct of the card
 
 // active set
 const ACTIVE_SET_START = 2;            // session begins with this many cards in the active set
@@ -198,8 +199,18 @@ const W_SPRINKLE = 2.5;
 ```
   card.attempts        += 1
   card.correctCount    += 1
-  card.streak          += 1
-  card.bestStreak       = max(card.bestStreak, card.streak)
+
+  // streak only counts AFTER warm-up clears (5 cumulative corrects)
+  isWarmupActive = card.correctCount <= WARMUP_PER_CARD
+  if (not isWarmupActive):
+    card.streak       += 1
+    card.bestStreak    = max(card.bestStreak, card.streak)
+    if (card.streak >= MASTERY_TARGET):
+      wasJustMastered = not card.mastered
+      card.mastered = true                              // STICKY
+      if (wasJustMastered):
+        card.cardsShownSinceMastered = 0
+
   card.consecutiveMistakes = 0
   card.penalty          = PENALTY_HALVE_ON_CORRECT
                             ? floor(card.penalty / 2)
@@ -209,14 +220,19 @@ const W_SPRINKLE = 2.5;
   card.cardsAgoSeen     = 0
   bumpCardsAgoForOthers(state, card.id)
 
-  if (card.streak >= MASTERY_TARGET) card.mastered = true   // STICKY
-
   state.recentGrades = pushBounded(state.recentGrades, 'c', RECENT_WINDOW)
   state.consecutiveCorrectInSession += 1
-  if (state.warmupRemainingThisSession > 0)
-    state.warmupRemainingThisSession -= 1
 
-  maybeUnlockNext(state, card)
+  // first counted-correct on this card AND active set still at start size → unlock 3rd card
+  isFirstCountedCorrect = (not isWarmupActive) AND (card.correctCount == WARMUP_PER_CARD + 1)
+  if (isFirstCountedCorrect AND state.activeSet.size < ACTIVE_SET_STEADY):
+    addNextPathCardToActive(state, path)
+
+  // mastery just fired → 1-for-1 replacement (newly-mastered card leaves; new card enters)
+  if (card.mastered AND wasJustMastered):
+    state.activeSet.remove(card.id)
+    addNextPathCardToActive(state, path)
+
   maybeExitStruggleMode(state)
 ```
 
@@ -225,7 +241,7 @@ const W_SPRINKLE = 2.5;
 ```
   card.attempts            += 1
   card.wrongCount          += 1
-  card.streak               = 0
+  card.streak               = 0    // safe even during warm-up; streak was 0 already
   card.consecutiveMistakes += 1
   card.penalty              = card.consecutiveMistakes == 1
                                 ? 1
@@ -234,6 +250,8 @@ const W_SPRINKLE = 2.5;
   card.lastSeenAt           = now()
   card.cardsAgoSeen         = 0
   bumpCardsAgoForOthers(state, card.id)
+
+  // wrongs DO NOT consume warm-up budget. correctCount is unchanged on wrong, so warm-up keeps its progress.
 
   state.recentGrades                 = pushBounded(state.recentGrades, 'w', RECENT_WINDOW)
   state.consecutiveCorrectInSession  = 0
@@ -245,11 +263,15 @@ Note: `onWrong` does NOT decrement any cumulative counter. The top bar uses `cor
 
 ### 7.3 `onSessionStart(state, path)`
 
+**Cross-session policy (locked):** ALL per-card state carries across sessions — `penalty`, `streak`, `recentResults`, `sprinkleCooldown`, `consecutiveMistakes`, etc. The learner returns into the exact same state they left. Yesterday's struggle on a card is today's struggle.
+
+Only `SessionState` resets at session start. Per-card state is untouched.
+
 ```
   state.recentGrades                = []
   state.cardsShown                  = 0
   state.consecutiveCorrectInSession = 0
-  state.inStruggleMode              = false
+  state.inStruggleMode              = false   // recomputed by maybeEnterStruggleMode after first grades
   state.previousCardId              = null
   state.twoBackCardId               = null
   state.prePushedActiveSet          = null
@@ -260,8 +282,8 @@ Note: `onWrong` does NOT decrement any cumulative counter. The top bar uses `cor
                       ? unmastered.slice(0, ACTIVE_SET_START)
                       : unmastered
 
-  // reset newcomer boosts only for cards entering active set fresh this session
-  // (cross-session: see OQ-XSP — defaults assume penalty + streak carry, recentResults reset)
+  // newcomer boost: only reset attemptsSinceEnteringActive for cards just entering active fresh
+  // cards already in active set keep their progress — their boost has decayed naturally
 ```
 
 ---
@@ -428,11 +450,25 @@ After picking, the caller updates session state:
 
 ## 11. Mastery and the sticky flag
 
-- A card becomes `mastered = true` the first time `streak ≥ MASTERY_TARGET`.
+- A card becomes `mastered = true` the first time `streak ≥ MASTERY_TARGET` (and `streak` only increments after warm-up clears).
 - `mastered` is **sticky**. A subsequent wrong drops `streak` to 0 but does NOT set `mastered = false`. Rationale: teachers re-test for fun and reassurance; un-mastering would feel punitive.
+- When a card becomes mastered, it leaves the active set immediately. A new card from the path joins (1-for-1 replacement).
 - A mastered card stops appearing in the active set unless:
   - It's eligible for a sprinkle (§12), OR
   - The teacher manually re-includes it.
+
+### Path completion
+
+When **every card in the active path is mastered**:
+
+1. The algorithm enters **path-complete state**.
+2. UI surface displays a "You've mastered this path" celebration. (Visual specifics live in `bornomala-shiki-continuous-progress.md`.)
+3. The user is offered two options:
+   - **Move on** — switch to a new path (e.g. vowels → vowel signs).
+   - **Keep going** — stay on this path; the algorithm enters **sprinkle-only mode**.
+4. In sprinkle-only mode, every card shown is a mastered card chosen via the sprinkle eligibility rule (§12). The active-set policy is suspended; the entire mastered path is the candidate pool. Anti-immediate-repeat still applies.
+
+This behavior is **locked for v2.0**. Refinement (e.g. variable cadence, retention-decay-based selection in sprinkle-only mode) is deferred to future revisions per the review cadence.
 
 ---
 
@@ -582,16 +618,17 @@ Each becomes a small decision chat as we lock it. **LOCKED** items are decisions
 | OQ-11 | Cross-session decay (penalty) | carry vs reset | open. recommend carry |
 | OQ-12 | Cross-session sprinkle cooldown | persist vs reset | open. recommend reset |
 | **OQ-AR** | Anti-immediate-repeat | weighted vs hard rule | **LOCKED**: HARD rule — visibility 0 if id == previousCardId, except single-card fallback |
-| **OQ-PCB** | Per-card bar visualization | one signed bar (-16…+10) vs split visuals | open. recommend single signed bar |
-| **OQ-W** | Warm-up exit condition | (a) 5 attempts any outcome. (b) 5 corrects any order. (c) 5 corrects in a row | open. recommend (a) — simplest, kindest |
-| **OQ-XSP** | Cross-session persistence — what carries? | varies per field | open. recommend: penalty carry, streak carry, recentResults reset, sprinkleCooldown reset |
-| **OQ-PC** | Path-completion behavior | endless practice / "complete" celebration / sprinkle-only | open. recommend "complete" + offer review-or-next |
+| **OQ-PCB** | (see locked entry below) | — | — |
+| **OQ-W** | Warm-up exit condition | (a) 5 attempts any outcome. (b) 5 corrects any order. (c) 5 corrects in a row | **LOCKED**: (b) — 5 cumulative corrects per card; wrongs during warm-up don't consume budget |
+| **OQ-XSP** | Cross-session persistence — what carries? | varies per field | **LOCKED**: ALL per-card state carries (penalty, streak, recentResults, sprinkleCooldown, consecutiveMistakes). Only SessionState resets. |
+| **OQ-PC** | Path-completion behavior | endless practice / "complete" celebration / sprinkle-only | **LOCKED**: celebration + offer "move on" or "keep going" (sprinkle-only mode). Refine later from user feedback. |
 | **OQ-NMC** | Newly-mastered quiet period | reps a just-mastered card stays out of rotation before sprinkles | **LOCKED**: 10 cards |
-| **OQ-SC** | Struggle mode + new card collision | push out the old card vs the brand-new one | open. recommend push out old (protect the unlock) |
+| **OQ-SC** | Struggle mode + new card collision | push out the old card vs the brand-new one | **DEFERRED** — Bappy: "we will decide all those later". Default for implementation: keep top-N by struggleScore (newcomer typically pushed out; its boost-attempt counter pauses, resumes on re-entry). |
 | **OQ-PSW** | Path-switching mid-session | reset session state vs carry | open. need real-use observation |
-| **OQ-CPS** | Confusion-pair signaling (e.g. learner mistakes অ↔আ) | track now vs defer | open. recommend defer, reserve schema |
+| **OQ-CPS** | Confusion-pair signaling (e.g. learner mistakes অ↔আ) | track now vs defer | **DEFERRED** — Bappy: "we need to talk about this later". No schema field added in v2.0. |
 | **OQ-XPR** | Cross-path retention (older path's cards sprinkled into a new path) | now vs deferred | **LOCKED**: deferred (Bappy explicitly noted as future improvement) |
 | **OQ-ATR** | Algorithm transparency for teacher (show *why* this card was picked) | now vs deferred | open. likely deferred to Occor redesign |
+| **OQ-PCB** | Per-card bar visualization | one signed bar (-16…+10) vs split visuals | **LOCKED**: single signed bar |
 
 ---
 
@@ -617,6 +654,7 @@ Captured so we don't re-litigate.
 |---|---|---|---|
 | v2.0-draft-1 | 2026-05-05 | Bappy + Claude | Initial pseudocode spec drafted from teaching-session #1 findings. |
 | v2.0-draft-2 | 2026-05-05 | Bappy + Claude | Anti-repeat → HARD rule; per-card bar signed (-16…+10); active set steady at 3 with 1-for-1 replacement (no batch unlock); newcomer visibility boost added; warm-up scoped per-card; first-counted-correct unlock trigger; newly-mastered quiet period; bar denominator uses `MASTERY_TARGET − WARMUP_PER_CARD`. New OQs added: AR, PCB, W, XSP, PC, NMC, SC, PSW, CPS, XPR, ATR. |
+| v2.0-draft-3 | 2026-05-05 | Bappy + Claude | Locked: OQ-W = 5 cumulative corrects per card (wrongs don't consume warm-up budget); OQ-XSP = ALL per-card state carries cross-session; OQ-PC = celebration + sprinkle-only on path complete. OQ-SC and OQ-CPS deferred with default behaviors so implementation isn't blocked. onCorrect/onWrong updated to enforce streak-only-after-warmup. Path-completion semantics added to §11. |
 
 ---
 

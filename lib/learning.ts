@@ -92,6 +92,34 @@ export function getUnlockedCards(
   return cards.slice(0, unlockedCount);
 }
 
+const NEWCOMER_BOOST_MAX = 6;
+const NEWCOMER_DECAY_REPS = 8;
+const W_WRONG = 2;
+const POOL_SIZE = 5;
+
+function visibilityScore(progress: LetterProgress): number {
+  const remainingTerm = Math.max(0, MASTERY_TARGET - progress.correctCount);
+  const wrongTerm = progress.wrongCount * W_WRONG;
+  const newcomerTerm = Math.max(
+    0,
+    NEWCOMER_BOOST_MAX * (1 - progress.seenCount / NEWCOMER_DECAY_REPS),
+  );
+  return remainingTerm + wrongTerm + newcomerTerm;
+}
+
+function weightedRandomPick<T>(items: T[], weights: number[]): T {
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) {
+    return items[Math.floor(Math.random() * items.length)];
+  }
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
 export function chooseNextCard(
   cards: LetterCard[],
   progress: ProgressByCard,
@@ -102,32 +130,23 @@ export function chooseNextCard(
   );
   const candidateCards = unmasteredCards.length > 0 ? unmasteredCards : cards;
 
-  const orderedCards = [...candidateCards].sort((first, second) => {
-    const firstProgress = getProgressForCard(progress, first.id);
-    const secondProgress = getProgressForCard(progress, second.id);
-    const firstRemaining = MASTERY_TARGET - firstProgress.correctCount;
-    const secondRemaining = MASTERY_TARGET - secondProgress.correctCount;
-
-    if (firstRemaining !== secondRemaining) {
-      return secondRemaining - firstRemaining;
-    }
-
-    if (firstProgress.wrongCount !== secondProgress.wrongCount) {
-      return secondProgress.wrongCount - firstProgress.wrongCount;
-    }
-
-    if (firstProgress.seenCount !== secondProgress.seenCount) {
-      return firstProgress.seenCount - secondProgress.seenCount;
-    }
-
-    return first.order - second.order;
+  const ranked = [...candidateCards].sort((a, b) => {
+    const sa = visibilityScore(getProgressForCard(progress, a.id));
+    const sb = visibilityScore(getProgressForCard(progress, b.id));
+    if (sa !== sb) return sb - sa;
+    return a.order - b.order;
   });
 
-  const practicePool = orderedCards.slice(0, Math.min(3, orderedCards.length));
-  const nextOptions =
-    practicePool.length > 1
-      ? practicePool.filter((card) => card.id !== previousCardId)
-      : practicePool;
+  const pool = ranked.slice(0, Math.min(POOL_SIZE, ranked.length));
 
-  return nextOptions[Math.floor(Math.random() * nextOptions.length)];
+  const eligible =
+    pool.length > 1
+      ? pool.filter((card) => card.id !== previousCardId)
+      : pool;
+
+  const weights = eligible.map((card) =>
+    visibilityScore(getProgressForCard(progress, card.id)),
+  );
+
+  return weightedRandomPick(eligible, weights);
 }
