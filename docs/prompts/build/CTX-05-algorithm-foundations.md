@@ -1,4 +1,4 @@
-# CTX-04 — Algorithm v2 Foundations (schema, migration, applyGrade)
+# CTX-05 — Algorithm v2 Foundations (schema, migration, applyGrade)
 
 **Status**: ⏳ Pending
 **Author tool**: Claude Code (Opus 4.7)
@@ -20,7 +20,7 @@ Land the v2 algorithm's **schema, migration, and grading logic** in `lib/learnin
 - A new `lib/learning.test.ts` proves all of the above.
 - The app still runs identically in the browser — no visible change.
 
-The visibility-score / chooseNextCard rewrite is **NOT** in this slice. It comes in CTX-05.
+The visibility-score / chooseNextCard rewrite is **NOT** in this slice. It comes in CTX-06.
 
 ---
 
@@ -47,12 +47,12 @@ The visibility-score / chooseNextCard rewrite is **NOT** in this slice. It comes
 ## Prompt to paste
 
 ```markdown
-You are implementing CTX-04 of the Bornomala learning-algorithm v2 chain. Read the prompt file in full at `docs/prompts/build/CTX-04-algorithm-foundations.md`. Then read the spec at `docs/LEARNING-ALGORITHM.md` (sections 4, 5, 6, 7.1, 7.2, 7.3) before any edits.
+You are implementing CTX-05 of the Bornomala learning-algorithm v2 chain. Read the prompt file in full at `docs/prompts/build/CTX-05-algorithm-foundations.md`. Then read the spec at `docs/LEARNING-ALGORITHM.md` (sections 4, 5, 6, 7.1, 7.2, 7.3) before any edits.
 
 ## Before starting
 
 1. `git pull origin main`
-2. `git log --oneline -5` — confirm last commit and that no prior CTX-04 work landed.
+2. `git log --oneline -5` — confirm last commit and that no prior CTX-05 work landed.
 3. Read these files in order:
    - `docs/LEARNING-ALGORITHM.md` (full)
    - `docs/plans/bornomala-learning-algorithm-v2-prompt-chain.md`
@@ -60,7 +60,7 @@ You are implementing CTX-04 of the Bornomala learning-algorithm v2 chain. Read t
    - `App.tsx` lines 700–760 (the grade handler + AsyncStorage hydrate region)
    - `data/banglaLetters.ts` (only to know `MASTERY_TARGET` is here)
 
-Recap CTX-04 to me in 2–3 sentences before writing any code. Confirm I'm ready.
+Recap CTX-05 to me in 2–3 sentences before writing any code. Confirm I'm ready.
 
 ## Task 1 — Extend `lib/learning.ts` schema
 
@@ -230,9 +230,9 @@ Cases (minimum):
 
 ## What NOT to do
 
-- Do NOT rewrite `chooseNextCard` — that's CTX-05.
-- Do NOT add session state, struggle mode, or active-set lifecycle — those are CTX-05.
-- Do NOT add sprinkle logic or path-complete events — those are CTX-06.
+- Do NOT rewrite `chooseNextCard` — that's CTX-06.
+- Do NOT add session state, struggle mode, or active-set lifecycle — those are CTX-06.
+- Do NOT add sprinkle logic or path-complete events — those are CTX-07.
 - Do NOT touch `data/banglaLetters.ts`, components, configs, or any other file outside the list above.
 - Do NOT change UI text, layout, or component behavior.
 - Do NOT add Jest or any test runner dependency. Use `node:test` only.
@@ -241,11 +241,11 @@ Cases (minimum):
 ## If you are running low on context
 
 Before context auto-compacts (≤ 25% remaining or "hand over" instruction):
-1. Commit any in-progress work: `wip(algo): CTX-04 in progress — handover`
+1. Commit any in-progress work: `wip(algo): CTX-05 in progress — handover`
 2. Push to main.
-3. Write `docs/handover/CTX-04-handover-YYYY-MM-DD.md` with: what is done, what is left, exact next file/line to pick up at, any open questions.
+3. Write `docs/handover/CTX-05-handover-YYYY-MM-DD.md` with: what is done, what is left, exact next file/line to pick up at, any open questions.
 4. Tell Bappy the handover path. Stop.
 
 ## Next step
 
-`docs/prompts/build/CTX-04R-algorithm-foundations-review.md` — independent review.
+`docs/prompts/build/CTX-05R-algorithm-foundations-review.md` — independent review.

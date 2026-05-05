@@ -33,7 +33,7 @@ This plan describes a **6-prompt chain** (3 implement + 3 review) that takes the
 - **UI frozen**: do not change visible behavior of any screen in the current build. The signed per-card bar (-16…+10), path-complete celebration, and any other v2 UI surfaces are out of scope. The algorithm produces the data; UI consumption lands in a future chain.
 - **Files this chain owns** (free to edit):
   - `lib/learning.ts`
-  - `lib/learning.test.ts` *(new file, created in CTX-04)*
+  - `lib/learning.test.ts` *(new file, created in CTX-05)*
   - `docs/LEARNING-LOGIC.md`
   - `docs/PRODUCT-LOGIC.md`
   - `docs/LEARNING-ALGORITHM.md` *(only for change-log entries when implementation lands)*
@@ -63,9 +63,9 @@ Three implementation slices, sized for safety not symmetry. Each slice produces 
 
 | Slice | Touches | Risk | Why this slice exists |
 |---|---|---|---|
-| **CTX-04 — Foundations** | `lib/learning.ts` (schema + applyGrade rewrite + migration), `lib/learning.test.ts` (new), `App.tsx` (1-line migration call) | Low | Schema is additive. applyGrade keeps signature. Old `chooseNextCard` still works against new schema. App still runs identically. |
-| **CTX-05 — Selection & Active Set** | `lib/learning.ts` (chooseNextCard rewrite + visibility score + active-set lifecycle + struggle mode), `lib/learning.test.ts` (extend), `App.tsx` (add session-state hook, pass through) | Medium | New chooseNextCard is the actual behavioral change a teacher will feel. Migration safety net is already in place from CTX-04. |
-| **CTX-06 — Sprinkle, Path-complete, Docs** | `lib/learning.ts` (sprinkle eligibility + cooldown + path-complete event), `lib/learning.test.ts` (extend), `App.tsx` (silent path-complete `console.log`), `docs/LEARNING-LOGIC.md` (rewrite v2 sections), `docs/PRODUCT-LOGIC.md` (mastery rule) | Low | Sprinkle and path-complete are additive features that fire only when conditions are met. Doc alignment is pure text. |
+| **CTX-05 — Foundations** | `lib/learning.ts` (schema + applyGrade rewrite + migration), `lib/learning.test.ts` (new), `App.tsx` (1-line migration call) | Low | Schema is additive. applyGrade keeps signature. Old `chooseNextCard` still works against new schema. App still runs identically. |
+| **CTX-06 — Selection & Active Set** | `lib/learning.ts` (chooseNextCard rewrite + visibility score + active-set lifecycle + struggle mode), `lib/learning.test.ts` (extend), `App.tsx` (add session-state hook, pass through) | Medium | New chooseNextCard is the actual behavioral change a teacher will feel. Migration safety net is already in place from CTX-05. |
+| **CTX-07 — Sprinkle, Path-complete, Docs** | `lib/learning.ts` (sprinkle eligibility + cooldown + path-complete event), `lib/learning.test.ts` (extend), `App.tsx` (silent path-complete `console.log`), `docs/LEARNING-LOGIC.md` (rewrite v2 sections), `docs/PRODUCT-LOGIC.md` (mastery rule) | Low | Sprinkle and path-complete are additive features that fire only when conditions are met. Doc alignment is pure text. |
 
 Why not one mega-slice: a single bigger slice is harder to review, harder to roll back, and a bigger merge conflict if the other agent is in `App.tsx` at the same time. Three commits = three small conflict surfaces.
 
@@ -75,8 +75,8 @@ Why not one mega-slice: a single bigger slice is harder to review, harder to rol
 
 All filed in `docs/prompts/build/`. Status starts at ⏳ Pending; flips to ✅ Done after the corresponding Review prompt confirms.
 
-### CTX-04 — Algorithm Foundations (impl)
-Path: `docs/prompts/build/CTX-04-algorithm-foundations.md`
+### CTX-05 — Algorithm Foundations (impl)
+Path: `docs/prompts/build/CTX-05-algorithm-foundations.md`
 Scope:
 - Extend `LetterProgress` type with v2 fields (per spec §4): `streak`, `bestStreak`, `consecutiveMistakes`, `penalty`, `recentResults`, `attemptsSinceEnteringActive`, `enteredActiveAt`, `cardsShownSinceMastered`, `sprinkleCooldown`, `firstSeenAt`, `timeSpentMs` (reserved). All defaults safe (zeros / nulls / empty arrays).
 - Add `schemaVersion: 2` wrapper. Write `migrateProgress(raw)` that maps v1 → v2 preserving `mastered` (sticky) and other counters.
@@ -90,19 +90,19 @@ Verification:
 - `npm run web` — app loads, AsyncStorage persisted progress still appears, no console errors.
 - Manual: existing scheduler still works (uses old chooseNextCard; nothing visible changes).
 
-### CTX-04R — Foundations Review
-Path: `docs/prompts/build/CTX-04R-algorithm-foundations-review.md`
+### CTX-05R — Foundations Review
+Path: `docs/prompts/build/CTX-05R-algorithm-foundations-review.md`
 Scope:
-- Read CTX-04 + the spec.
+- Read CTX-05 + the spec.
 - Diff `lib/learning.ts` vs spec §4-§7. Report any field missing, type mismatch, default mismatch, or behavior divergence.
 - Run `npm run typecheck`, `npm test`, `npm run web` and report.
 - Output: a checklist with PASS / FAIL per spec section. **Does not fix anything.** Files a FIX prompt only if there are gaps.
 
-### CTX-05 — Algorithm Selection & Active Set (impl)
-Path: `docs/prompts/build/CTX-05-algorithm-selection.md`
+### CTX-06 — Algorithm Selection & Active Set (impl)
+Path: `docs/prompts/build/CTX-06-algorithm-selection.md`
 Scope:
 - Add `SessionState` type per spec §5.
-- Implement `visibilityScore(card, state)` per spec §8 — including hard anti-immediate-repeat, newcomer boost, penalty term, freshness, sprinkle stub (returns 0 for now since CTX-06 implements sprinkle eligibility).
+- Implement `visibilityScore(card, state)` per spec §8 — including hard anti-immediate-repeat, newcomer boost, penalty term, freshness, sprinkle stub (returns 0 for now since CTX-07 implements sprinkle eligibility).
 - Rewrite `chooseNextCard` per spec §10 — weighted-random sampling with single-card fallback, RNG injectable.
 - Implement active-set lifecycle helpers per spec §9: initial 2 cards, grow to 3 on first counted-correct, 1-for-1 replacement on mastery, struggle-mode shrink to 2 with restore.
 - Implement struggle-mode transitions per spec §9.
@@ -113,15 +113,15 @@ Verification:
 - `npm run typecheck`, `npm test` pass.
 - `npm run web` — start fresh session, observe: 2 cards alternate, never the same card twice in a row, after a few corrects a 3rd card joins, mistakes shrink the rotation.
 
-### CTX-05R — Selection Review
-Path: `docs/prompts/build/CTX-05R-algorithm-selection-review.md`
-Scope: same shape as CTX-04R but verifying §8-§10. Includes a manual scripted scenario the reviewer plays through in the browser and reports observed behavior. **No fixes** — files FIX prompts if needed.
+### CTX-06R — Selection Review
+Path: `docs/prompts/build/CTX-06R-algorithm-selection-review.md`
+Scope: same shape as CTX-05R but verifying §8-§10. Includes a manual scripted scenario the reviewer plays through in the browser and reports observed behavior. **No fixes** — files FIX prompts if needed.
 
-### CTX-06 — Sprinkle + Path-complete + Docs (impl)
-Path: `docs/prompts/build/CTX-06-algorithm-completion.md`
+### CTX-07 — Sprinkle + Path-complete + Docs (impl)
+Path: `docs/prompts/build/CTX-07-algorithm-completion.md`
 Scope:
 - Implement `eligibleForSprinkle(card, state)` per spec §12 — including `NEWLY_MASTERED_QUIET_PERIOD` and cooldown.
-- Wire sprinkle term into `visibilityScore` (replaces the stub from CTX-05).
+- Wire sprinkle term into `visibilityScore` (replaces the stub from CTX-06).
 - Implement path-complete detector — fires when every card in path is `mastered`. Emits an event via callback (`onPathComplete`) passed in from App.tsx.
 - App.tsx: add `console.log('[bornomala] path complete')` callback. NO UI yet.
 - Implement sprinkle-only mode: when path complete and the user "keeps going", `chooseNextCard` selects from mastered pool with sprinkle weights.
@@ -131,15 +131,15 @@ Scope:
 
 Verification: `typecheck`, `test`, `web`. Sprinkle test: master one card via test fixture, confirm it stops appearing during the quiet period and reappears after.
 
-### CTX-06R — Completion Review
-Path: `docs/prompts/build/CTX-06R-algorithm-completion-review.md`
+### CTX-07R — Completion Review
+Path: `docs/prompts/build/CTX-07R-algorithm-completion-review.md`
 Scope: validate §11-§12, doc alignment with code, no-UI-change assertion. Confirms `LEARNING-ALGORITHM.md` is bumped to v2.0.
 
 ---
 
 ## Master orchestration prompt
 
-A single message Bappy can paste into a fresh session to run the chain end-to-end. Lives at `docs/prompts/build/CTX-04-MASTER-RUN-CHAIN.md`.
+A single message Bappy can paste into a fresh session to run the chain end-to-end. Lives at `docs/prompts/build/CTX-05-MASTER-RUN-CHAIN.md`.
 
 Behavior:
 - Reads each prompt at its absolute path.
@@ -182,14 +182,14 @@ Do NOT silently keep working into auto-compact.
 
 | File | Modified by | Purpose |
 |---|---|---|
-| `lib/learning.ts` | CTX-04, 05, 06 | The algorithm |
-| `lib/learning.test.ts` | CTX-04 (new), 05, 06 | Unit tests; pure tsx-runnable so no Jest dependency required |
-| `App.tsx` | CTX-04, 05, 06 (small edits each) | Migration hook, session state, path-complete listener |
-| `docs/LEARNING-LOGIC.md` | CTX-06 | Aligned to v2 |
-| `docs/PRODUCT-LOGIC.md` | CTX-06 | Mastery row updated |
-| `docs/LEARNING-ALGORITHM.md` | CTX-06 | Change log entry; status bumped to v2.0 |
-| `docs/prompts/build/CTX-04*.md` … `CTX-06R*.md` | This plan, after approval | The chain itself |
-| `docs/prompts/build/CTX-04-MASTER-RUN-CHAIN.md` | This plan, after approval | Master orchestrator |
+| `lib/learning.ts` | CTX-05, 05, 06 | The algorithm |
+| `lib/learning.test.ts` | CTX-05 (new), 05, 06 | Unit tests; pure tsx-runnable so no Jest dependency required |
+| `App.tsx` | CTX-05, 05, 06 (small edits each) | Migration hook, session state, path-complete listener |
+| `docs/LEARNING-LOGIC.md` | CTX-07 | Aligned to v2 |
+| `docs/PRODUCT-LOGIC.md` | CTX-07 | Mastery row updated |
+| `docs/LEARNING-ALGORITHM.md` | CTX-07 | Change log entry; status bumped to v2.0 |
+| `docs/prompts/build/CTX-05*.md` … `CTX-07R*.md` | This plan, after approval | The chain itself |
+| `docs/prompts/build/CTX-05-MASTER-RUN-CHAIN.md` | This plan, after approval | Master orchestrator |
 
 ---
 
@@ -225,7 +225,7 @@ After all six prompts run + ✅ Done:
 ## Risks & mitigations
 
 - **Risk: AsyncStorage migration corrupts old user data.**
-  Mitigation: defensive defaults for every field; try/catch around hydrate; CTX-04R reviews migration with a fixture of v1-shaped data.
+  Mitigation: defensive defaults for every field; try/catch around hydrate; CTX-05R reviews migration with a fixture of v1-shaped data.
 - **Risk: weighted-random tests are flaky.**
   Mitigation: inject `rng` into `chooseNextCard`; tests use a seeded RNG.
 - **Risk: other agent edits `App.tsx` at the same time → merge conflict.**
