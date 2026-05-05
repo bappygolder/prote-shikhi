@@ -38,8 +38,8 @@ const STORAGE_KEY = 'bornomala.progress.v1';
 const LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const DEFAULT_PRESET = PRACTICE_PRESETS[0];
-const APP_VERSION = 'v1.1.1';
-const LAST_UPDATED = 'Monday, 4 May 2026';
+const APP_VERSION = 'v1.1.2';
+const LAST_UPDATED = 'Wednesday, 6 May 2026';
 
 const PERSISTED_TABS = ['path', 'letters', 'practice'] as const;
 type PersistedTab = (typeof PERSISTED_TABS)[number];
