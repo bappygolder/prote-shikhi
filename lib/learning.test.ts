@@ -1,13 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { LetterCard } from '../data/banglaLetters';
 import {
+  applyActiveSetOnCorrect,
+  applyActiveSetOnMastery,
   applyGrade,
+  chooseNextCard,
+  initSessionState,
+  maybeEnterStruggleMode,
+  maybeExitStruggleMode,
   migrateProgress,
+  visibilityScore,
+  ACTIVE_SET_START,
+  ACTIVE_SET_STEADY,
+  ACTIVE_SET_STRUGGLE,
   MASTERY_TARGET,
+  NEW_CARD_BOOST_DURATION,
+  NEW_CARD_BOOST_WEIGHT,
   PENALTY_MAX,
+  STRUGGLE_RECOVERY_STREAK,
   WARMUP_PER_CARD,
+  getProgressForCard,
+  type LetterProgress,
   type ProgressByCard,
+  type SessionState,
 } from './learning';
 
 const CARD = 'card-1';
@@ -176,4 +193,262 @@ test('migrateProgress: empty / undefined / null inputs return empty v2 envelope'
     assert.equal(out.schemaVersion, 2);
     assert.deepEqual(out.byCard, {});
   }
+});
+
+// ---------------------------------------------------------------------------
+// CTX-06 — selection logic, active-set lifecycle, struggle mode
+// ---------------------------------------------------------------------------
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makePath(n: number): LetterCard[] {
+  const path: LetterCard[] = [];
+  for (let i = 0; i < n; i++) {
+    path.push({
+      id: `card-${i + 1}`,
+      letter: String.fromCharCode(0x0985 + i), // arbitrary Bangla letter
+      group: 'vowel',
+      order: i + 1,
+    });
+  }
+  return path;
+}
+
+function defaultProgressFor(ids: string[]): ProgressByCard {
+  const out: ProgressByCard = {};
+  for (const id of ids) out[id] = getProgressForCard({}, id);
+  return out;
+}
+
+function withProgress(
+  progress: ProgressByCard,
+  id: string,
+  patch: Partial<LetterProgress>,
+): ProgressByCard {
+  return { ...progress, [id]: { ...getProgressForCard(progress, id), ...patch } };
+}
+
+test('visibilityScore: previous card returns 0 when activeSet.length > 1', () => {
+  const path = makePath(3);
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    previousCardId: 'card-1',
+  };
+  const cardProgress = getProgressForCard({}, 'card-1');
+  const s = visibilityScore(path[0], cardProgress, session);
+  assert.equal(s, 0);
+});
+
+test('visibilityScore: previous card returns nonzero when activeSet.length === 1', () => {
+  const path = makePath(3);
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    activeSet: ['card-1'],
+    previousCardId: 'card-1',
+  };
+  const cardProgress = getProgressForCard({}, 'card-1');
+  const s = visibilityScore(path[0], cardProgress, session);
+  assert.ok(s > 0, `expected score > 0 in single-card fallback, got ${s}`);
+});
+
+test('visibilityScore: mastered card returns 0', () => {
+  const path = makePath(2);
+  const session = initSessionState(path, {});
+  const cardProgress: LetterProgress = {
+    ...getProgressForCard({}, 'card-1'),
+    mastered: true,
+  };
+  const s = visibilityScore(path[0], cardProgress, session);
+  assert.equal(s, 0);
+});
+
+test('visibilityScore: newcomer boost decays from full at attempt 0 to 0 at attempt NEW_CARD_BOOST_DURATION', () => {
+  const path = makePath(3);
+  // session whose previous card is NOT card-1, so anti-repeat doesn't fire
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    previousCardId: 'card-2',
+  };
+
+  const at0 = visibilityScore(
+    path[0],
+    { ...getProgressForCard({}, 'card-1'), attemptsSinceEnteringActive: 0 },
+    session,
+  );
+  const atFull = visibilityScore(
+    path[0],
+    {
+      ...getProgressForCard({}, 'card-1'),
+      attemptsSinceEnteringActive: NEW_CARD_BOOST_DURATION,
+    },
+    session,
+  );
+
+  assert.ok(
+    at0 - atFull >= NEW_CARD_BOOST_WEIGHT - 1e-9,
+    `expected newcomer term contributing ~${NEW_CARD_BOOST_WEIGHT}, got delta ${at0 - atFull}`,
+  );
+  // Half-decay: at duration/2, contribution should be NEW_CARD_BOOST_WEIGHT/2.
+  const atHalf = visibilityScore(
+    path[0],
+    {
+      ...getProgressForCard({}, 'card-1'),
+      attemptsSinceEnteringActive: NEW_CARD_BOOST_DURATION / 2,
+    },
+    session,
+  );
+  assert.ok(
+    Math.abs((atHalf - atFull) - NEW_CARD_BOOST_WEIGHT / 2) < 1e-6,
+    `expected half-decay = ${NEW_CARD_BOOST_WEIGHT / 2}, got ${atHalf - atFull}`,
+  );
+});
+
+test('chooseNextCard: never returns previousCardId when activeSet.length > 1 over 200 trials', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
+  const session: SessionState = {
+    ...initSessionState(path, progress),
+    activeSet: ['card-1', 'card-2'],
+    previousCardId: 'card-1',
+  };
+  const rng = mulberry32(42);
+  for (let i = 0; i < 200; i++) {
+    const chosen = chooseNextCard(path, progress, 'card-1', session, rng);
+    assert.notEqual(chosen.id, 'card-1');
+  }
+});
+
+test('chooseNextCard: weighted distribution favors highest-score card', () => {
+  // Construct two cards where card-1 has a high score, card-2 has roughly half.
+  // Use attemptsSinceEnteringActive to scale the boost term:
+  //   card-1: attempts=0  → boost = 8
+  //   card-2: attempts=4  → boost = 4
+  // Both cards get W_BASE=1 + freshness=2.5 (recent.length=0). So:
+  //   card-1 score ≈ 1 + 8 + 2.5 = 11.5
+  //   card-2 score ≈ 1 + 4 + 2.5 = 7.5
+  // That's not "half" exactly. Tweak: card-1 attempts=0, card-2 attempts=6 → boost 2.
+  //   card-1 ≈ 1 + 8 + 2.5 = 11.5
+  //   card-2 ≈ 1 + 2 + 2.5 = 5.5  → roughly half.
+  const path = makePath(2);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), attemptsSinceEnteringActive: 0 },
+    'card-2': { ...getProgressForCard({}, 'card-2'), attemptsSinceEnteringActive: 6 },
+  };
+  const session: SessionState = {
+    ...initSessionState(path, progress),
+    activeSet: ['card-1', 'card-2'],
+    previousCardId: null,
+  };
+
+  const rng = mulberry32(0xc0ffee);
+  let topCount = 0;
+  const trials = 1000;
+  for (let i = 0; i < trials; i++) {
+    const chosen = chooseNextCard(path, progress, '', session, rng);
+    if (chosen.id === 'card-1') topCount += 1;
+  }
+  const ratio = topCount / trials;
+  assert.ok(
+    ratio >= 0.35,
+    `expected top card chosen ≥ 35% of the time, got ${(ratio * 100).toFixed(1)}%`,
+  );
+});
+
+test('chooseNextCard: single-card fallback returns the only card', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
+  const session: SessionState = {
+    ...initSessionState(path, progress),
+    activeSet: ['card-2'],
+    previousCardId: 'card-2',
+  };
+  const chosen = chooseNextCard(path, progress, 'card-2', session, () => 0);
+  assert.equal(chosen.id, 'card-2');
+});
+
+test('applyActiveSetOnCorrect: first counted-correct grows from 2 → 3', () => {
+  const path = makePath(5);
+  const session = initSessionState(path, {});
+  assert.equal(session.activeSet.length, ACTIVE_SET_START);
+  const cardProgress = getProgressForCard({}, 'card-1');
+  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path);
+  assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
+  assert.equal(next.activeSet[2], 'card-3');
+});
+
+test('applyActiveSetOnCorrect: subsequent counted-corrects do NOT grow further', () => {
+  const path = makePath(5);
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    activeSet: ['card-1', 'card-2', 'card-3'],
+  };
+  const cardProgress = getProgressForCard({}, 'card-1');
+  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path);
+  assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
+  assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
+});
+
+test('applyActiveSetOnMastery: mastered card removed; next path card appended', () => {
+  const path = makePath(5);
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    activeSet: ['card-1', 'card-2', 'card-3'],
+  };
+  const next = applyActiveSetOnMastery(session, 'card-2', path);
+  assert.ok(!next.activeSet.includes('card-2'), 'mastered card removed');
+  assert.equal(next.activeSet.length, 3);
+  assert.equal(next.activeSet[next.activeSet.length - 1], 'card-4');
+});
+
+test('maybeEnterStruggleMode: 2 wrongs in last 6 enters; active set shrinks to top 2 by struggleScore', () => {
+  const path = makePath(4);
+  // Three active cards; card-2 has highest struggleScore (consecutiveMistakes & penalty).
+  let progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
+  progress = withProgress(progress, 'card-2', {
+    consecutiveMistakes: 2,
+    penalty: 4,
+    recentResults: ['w', 'w'],
+  });
+  progress = withProgress(progress, 'card-3', {
+    consecutiveMistakes: 1,
+    penalty: 1,
+    recentResults: ['w'],
+  });
+  // card-1 stays clean.
+
+  const session: SessionState = {
+    ...initSessionState(path, progress),
+    activeSet: ['card-1', 'card-2', 'card-3'],
+    recentGrades: ['w', 'c', 'w'], // 2 wrongs in last window
+  };
+  const next = maybeEnterStruggleMode(session, progress, path);
+  assert.equal(next.inStruggleMode, true);
+  assert.equal(next.activeSet.length, ACTIVE_SET_STRUGGLE);
+  // Top 2 by struggleScore: card-2 (2*3+4+2=12) and card-3 (1*3+1+1=5).
+  assert.deepEqual(new Set(next.activeSet), new Set(['card-2', 'card-3']));
+  assert.deepEqual(next.prePushedActiveSet, ['card-1', 'card-2', 'card-3']);
+});
+
+test('maybeExitStruggleMode: 6 consecutive correct exits; active set restored', () => {
+  const path = makePath(4);
+  const session: SessionState = {
+    ...initSessionState(path, {}),
+    activeSet: ['card-2', 'card-3'],
+    prePushedActiveSet: ['card-1', 'card-2', 'card-3'],
+    inStruggleMode: true,
+    consecutiveCorrectInSession: STRUGGLE_RECOVERY_STREAK,
+  };
+  const next = maybeExitStruggleMode(session, path);
+  assert.equal(next.inStruggleMode, false);
+  assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
+  assert.equal(next.prePushedActiveSet, null);
 });

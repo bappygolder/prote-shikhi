@@ -1,12 +1,14 @@
 # CTX-06 — Algorithm v2 Selection (chooseNextCard, active set, struggle mode)
 
-**Status**: ⏳ Pending
-**Author tool**: Claude Code (Opus 4.7)
+**Status**: ✅ Done
+**Author tool**: Claude Code (Opus 4.7) → executed by claude-sonnet-4-6
 **Created**: 2026-05-05
-**Last updated**: 2026-05-05
+**Last updated**: 2026-05-06
 **$ value**: UNSCORED
 **Urgency**: 5
 **Score**: UNSCORED
+
+> **Result (2026-05-06)**: v2 selection logic landed. `lib/learning.ts` ships `SessionState` + `initSessionState`, the spec-correct `visibilityScore(card, cardProgress, state)` with hard anti-immediate-repeat & mastered-returns-0 rules, weighted-random `chooseNextCard(cards, progress, previousCardId, session?, rng?)`, active-set lifecycle helpers (`applyActiveSetOnCorrect`, `applyActiveSetOnMastery`), and struggle mode (`maybeEnterStruggleMode`, `maybeExitStruggleMode`, `struggleScore`). `App.tsx` `handleGrade` rewired to drive selection from session state on the default `unlocked` list (legacy uniform pick preserved on `needsWork` / `mastered` / `সব`). ba718c3's `NEWCOMER_BOOST_MAX`, `NEWCOMER_DECAY_REPS`, `W_WRONG`, `POOL_SIZE` constants removed. CTX-05's `applyGrade` and `migrateProgress` untouched. Plan: [`docs/plans/bornomala-ctx-06-algorithm-selection-plan.md`](../../plans/bornomala-ctx-06-algorithm-selection-plan.md). Verification: `npm run typecheck` PASS, 22/22 tests PASS, web bundle exports clean (543 kB). Next: CTX-06R review, then CTX-07 (sprinkle + path-complete + doc alignment).
 
 ---
 

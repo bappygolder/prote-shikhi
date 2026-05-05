@@ -23,15 +23,24 @@ import {
   type PracticePreset,
 } from './data/banglaLetters';
 import {
+  applyActiveSetOnCorrect,
+  applyActiveSetOnMastery,
   applyGrade,
   chooseNextCard,
   getProgressForCard,
   getUnlockedCards,
+  initSessionState,
   isPresetComplete,
+  maybeEnterStruggleMode,
+  maybeExitStruggleMode,
   migrateProgress,
+  pushBounded,
   resetCards,
+  RECENT_WINDOW,
+  WARMUP_PER_CARD,
   type ProgressByCard,
   type ProgressState,
+  type SessionState,
 } from './lib/learning';
 
 const STORAGE_KEY = 'bornomala.progress.v1';
@@ -436,6 +445,9 @@ export default function App() {
   );
   const [selectedPresetId, setSelectedPresetId] = useState(DEFAULT_PRESET.id);
   const [currentCardId, setCurrentCardId] = useState(DEFAULT_PRESET.cards[0].id);
+  const [session, setSession] = useState<SessionState>(() =>
+    initSessionState(DEFAULT_PRESET.cards, {}),
+  );
   const [isLoaded, setIsLoaded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTab, setCurrentTab] = useState<AppTab>('practice');
@@ -466,6 +478,7 @@ export default function App() {
             const parsed: unknown = JSON.parse(savedProgress);
             const state = migrateProgress(parsed);
             setProgress(state.byCard);
+            setSession(initSessionState(DEFAULT_PRESET.cards, state.byCard));
           } catch (parseError) {
             console.warn('[bornomala] Could not migrate stored progress, starting fresh.', parseError);
           }
@@ -730,27 +743,124 @@ export default function App() {
   }
 
   function handleGrade(wasCorrect: boolean) {
+    const current = getProgressForCard(progress, currentCard.id);
     const nextProgress = applyGrade(progress, currentCard.id, wasCorrect);
-    const nextUnlockedCards = getUnlockedCards(selectedPresetCards, nextProgress);
-    const nextPracticeCards = getEffectivePracticeCards(
-      selectedPracticeList,
-      selectedPresetCards,
-      nextProgress,
-      nextUnlockedCards,
-    );
-    const nextCard = chooseNextCard(
-      nextPracticeCards,
-      nextProgress,
-      currentCard.id,
-    );
+    const nextCardProgress = getProgressForCard(nextProgress, currentCard.id);
+
+    const wasFirstCountedCorrect =
+      wasCorrect &&
+      current.correctCount === WARMUP_PER_CARD &&
+      nextCardProgress.correctCount === WARMUP_PER_CARD + 1;
+    const wasJustMastered = !current.mastered && nextCardProgress.mastered;
+
+    let nextSession: SessionState = {
+      ...session,
+      recentGrades: pushBounded(
+        session.recentGrades,
+        wasCorrect ? 'c' : 'w',
+        RECENT_WINDOW,
+      ),
+      consecutiveCorrectInSession: wasCorrect
+        ? session.consecutiveCorrectInSession + 1
+        : 0,
+    };
+
+    let progressForSelection = nextProgress;
+    const beforeUnlockSize = nextSession.activeSet.length;
+
+    if (wasFirstCountedCorrect) {
+      nextSession = applyActiveSetOnCorrect(
+        nextSession,
+        currentCard.id,
+        nextCardProgress,
+        selectedPresetCards,
+      );
+    }
+    if (wasJustMastered) {
+      nextSession = applyActiveSetOnMastery(
+        nextSession,
+        currentCard.id,
+        selectedPresetCards,
+      );
+    }
+
+    // Reset newcomer counters for any newly-appended active card.
+    if (nextSession.activeSet.length > beforeUnlockSize) {
+      const entrantId = nextSession.activeSet[nextSession.activeSet.length - 1];
+      const entrantProgress = getProgressForCard(progressForSelection, entrantId);
+      progressForSelection = {
+        ...progressForSelection,
+        [entrantId]: {
+          ...entrantProgress,
+          attemptsSinceEnteringActive: 0,
+          enteredActiveAt: new Date().toISOString(),
+        },
+      };
+    }
+
+    nextSession = wasCorrect
+      ? maybeExitStruggleMode(nextSession, selectedPresetCards)
+      : maybeEnterStruggleMode(
+          nextSession,
+          progressForSelection,
+          selectedPresetCards,
+        );
+
+    // On the default unlocked list, drive selection from the new SessionState.
+    // On the other practice lists, preserve v1 behavior (no session) so the
+    // visible behavior outside the unlocked flow is unchanged.
+    let chosen;
+    if (selectedPracticeList === 'unlocked') {
+      chosen = chooseNextCard(
+        selectedPresetCards,
+        progressForSelection,
+        currentCard.id,
+        nextSession,
+      );
+    } else {
+      const nextUnlockedCards = getUnlockedCards(
+        selectedPresetCards,
+        progressForSelection,
+      );
+      const nextPracticeCards = getEffectivePracticeCards(
+        selectedPracticeList,
+        selectedPresetCards,
+        progressForSelection,
+        nextUnlockedCards,
+      );
+      chosen = chooseNextCard(
+        nextPracticeCards,
+        progressForSelection,
+        currentCard.id,
+      );
+    }
+
+    // Bump chosen card's attemptsSinceEnteringActive (spec §10).
+    const chosenProgress = getProgressForCard(progressForSelection, chosen.id);
+    const finalProgress: ProgressByCard = {
+      ...progressForSelection,
+      [chosen.id]: {
+        ...chosenProgress,
+        attemptsSinceEnteringActive:
+          chosenProgress.attemptsSinceEnteringActive + 1,
+      },
+    };
+
+    nextSession = {
+      ...nextSession,
+      twoBackCardId: nextSession.previousCardId,
+      previousCardId: chosen.id,
+      cardsShown: nextSession.cardsShown + 1,
+    };
 
     playFeedback(wasCorrect);
-    setProgress(nextProgress);
-    setCurrentCardId(nextCard.id);
-    setSessionStats((current) => ({
-      attempts: current.attempts + 1,
-      correct: current.correct + (wasCorrect ? 1 : 0),
-      wrong: current.wrong + (wasCorrect ? 0 : 1),
+    setProgress(finalProgress);
+    setSession(nextSession);
+    setCurrentCardId(chosen.id);
+    setSessionStats((c) => ({
+      attempts: c.attempts + 1,
+      correct: c.correct + (wasCorrect ? 1 : 0),
+      wrong: c.wrong + (wasCorrect ? 0 : 1),
     }));
   }
 
@@ -760,6 +870,7 @@ export default function App() {
       'পুরো অ্যাপ রিসেট করবেন? সব অগ্রগতি মুছে যাবে।',
       () => {
         setProgress({});
+        setSession(initSessionState(DEFAULT_PRESET.cards, {}));
         setSessionStats(initialSessionStats);
         setSelectedPresetId(DEFAULT_PRESET.id);
         setCurrentCardId(DEFAULT_PRESET.cards[0].id);
@@ -820,6 +931,7 @@ export default function App() {
     );
 
     setSelectedPresetId(preset.id);
+    setSession(initSessionState(preset.cards, progress));
     setCurrentCardId(nextCards[0]?.id ?? preset.cards[0].id);
     setCurrentTab('practice');
     handleCloseMenu();
