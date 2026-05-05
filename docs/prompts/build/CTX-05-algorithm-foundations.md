@@ -1,6 +1,6 @@
 # CTX-05 — Algorithm v2 Foundations (schema, migration, applyGrade)
 
-**Status**: ⏳ Pending
+**Status**: ✅ Done
 **Author tool**: Claude Code (Opus 4.7)
 **Created**: 2026-05-05
 **Last updated**: 2026-05-05
