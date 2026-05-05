@@ -25,6 +25,8 @@ Sprinkle and path-complete events are NOT in this slice — those land in CTX-07
 - Spec at `v2.0-draft-3`: `docs/LEARNING-ALGORITHM.md`.
 - Plan: `docs/plans/bornomala-learning-algorithm-v2-prompt-chain.md`.
 
+> **Heads-up — partial work already in main.** Commit `ba718c3` (a parallel agent) shipped a simple `visibilityScore(progress)` function plus tunables (`NEWCOMER_BOOST_MAX`, `NEWCOMER_DECAY_REPS`, `W_WRONG`, `POOL_SIZE`) and a top-5 weighted pool inside `chooseNextCard`. **You will REPLACE that** with the full spec §8 / §10 implementation. Their newcomer intent is preserved (and improved) by the spec's `attemptsSinceEnteringActive` + `NEW_CARD_BOOST_WEIGHT` / `NEW_CARD_BOOST_DURATION` design. Remove their constants after the new ones land — do not leave dead tunables in the file. Reference their commit in your message: `feat(algo): v2 chooseNextCard — supersedes ba718c3 newcomer-boost subset`. Also read `docs/plans/bornomala-algorithm-newcomer-boost.md` (their plan) to confirm nothing else they shipped escapes this replacement.
+
 ---
 
 ## Working directory
