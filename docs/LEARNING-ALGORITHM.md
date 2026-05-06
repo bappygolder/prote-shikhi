@@ -1,8 +1,8 @@
 # Bornomala — Learning Algorithm Specification
 
-**Version**: v2.0-draft-3 (implementation-ready)
-**Last updated**: 2026-05-05
-**Status**: All blocking open questions locked or given a default. Ready to implement; refine via review cadence.
+**Version**: v2.0
+**Last updated**: 2026-05-06
+**Status**: Implemented in CTX-05 / CTX-06 / CTX-07. Iterate via review cadence.
 **Authors**: Bappy + Claude (Opus 4.7)
 **Review cadence**: After every real teaching session, this spec gets a review pass. See [`docs/inbox/do/2026-05-05-bornomala-spec-review-cadence.md`](inbox/do/2026-05-05-bornomala-spec-review-cadence.md).
 
@@ -655,6 +655,7 @@ Captured so we don't re-litigate.
 | v2.0-draft-1 | 2026-05-05 | Bappy + Claude | Initial pseudocode spec drafted from teaching-session #1 findings. |
 | v2.0-draft-2 | 2026-05-05 | Bappy + Claude | Anti-repeat → HARD rule; per-card bar signed (-16…+10); active set steady at 3 with 1-for-1 replacement (no batch unlock); newcomer visibility boost added; warm-up scoped per-card; first-counted-correct unlock trigger; newly-mastered quiet period; bar denominator uses `MASTERY_TARGET − WARMUP_PER_CARD`. New OQs added: AR, PCB, W, XSP, PC, NMC, SC, PSW, CPS, XPR, ATR. |
 | v2.0-draft-3 | 2026-05-05 | Bappy + Claude | Locked: OQ-W = 5 cumulative corrects per card (wrongs don't consume warm-up budget); OQ-XSP = ALL per-card state carries cross-session; OQ-PC = celebration + sprinkle-only on path complete. OQ-SC and OQ-CPS deferred with default behaviors so implementation isn't blocked. onCorrect/onWrong updated to enforce streak-only-after-warmup. Path-completion semantics added to §11. |
+| v2.0 | 2026-05-06 | Bappy + Claude | Implemented across CTX-05 (schema + applyGrade with streak-after-warmup + migration), CTX-06 (chooseNextCard, active-set lifecycle, struggle mode, visibility score), CTX-07 (sprinkle eligibility, post-mastery counters, path-complete event — silent `console.log`, no UI). User-facing docs (`LEARNING-LOGIC.md`, `PRODUCT-LOGIC.md`) aligned to v2. Banner promoted from -draft-3 to v2.0. |
 
 ---
 

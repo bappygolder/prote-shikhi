@@ -26,9 +26,12 @@ export const W_RECENT_MISS = 4;
 export const W_PENALTY = 1.5;
 export const W_STREAK_GAP = 0.3;
 export const W_FRESHNESS = 0.5;
-// W_SPRINKLE is referenced by CTX-07's sprinkle eligibility; declared here so the
-// tunables live in one place even though CTX-06 doesn't read it.
 export const W_SPRINKLE = 2.5;
+
+// Sprinkle (post-mastery review) — spec §6, §12.
+export const SPRINKLE_EVERY_N_CARDS = 7;
+export const SPRINKLE_COOLDOWN = 15;
+export const NEWLY_MASTERED_QUIET_PERIOD = 10;
 
 export type LetterProgress = {
   // existing — preserved
@@ -119,6 +122,14 @@ export function isPresetComplete(
   progress: ProgressByCard,
 ): boolean {
   return cards.every((card) => getProgressForCard(progress, card.id).mastered);
+}
+
+// Spec §11 — true when every card in the path is mastered.
+export function isPathComplete(
+  path: LetterCard[],
+  progress: ProgressByCard,
+): boolean {
+  return isPresetComplete(path, progress);
 }
 
 export function resetCards(
@@ -428,6 +439,45 @@ export function maybeExitStruggleMode(
 }
 
 // ---------------------------------------------------------------------------
+// Sprinkle (post-mastery review) — spec §12
+// ---------------------------------------------------------------------------
+
+export function eligibleForSprinkle(
+  cardProgress: LetterProgress,
+  state: SessionState,
+): boolean {
+  if (!cardProgress.mastered) return false;
+  if (cardProgress.sprinkleCooldown !== 0) return false;
+  if (state.cardsShown % SPRINKLE_EVERY_N_CARDS !== 0) return false;
+  if (state.inStruggleMode) return false;
+  if (cardProgress.cardsShownSinceMastered < NEWLY_MASTERED_QUIET_PERIOD) return false;
+  return true;
+}
+
+export function tickSprinkleCooldowns(
+  progress: ProgressByCard,
+  shownCardId: string,
+): ProgressByCard {
+  const next: ProgressByCard = { ...progress };
+  for (const [id, p] of Object.entries(progress)) {
+    if (id === shownCardId) continue;
+    if (!p.mastered) continue;
+    if (p.sprinkleCooldown <= 0) continue;
+    next[id] = { ...p, sprinkleCooldown: Math.max(0, p.sprinkleCooldown - 1) };
+  }
+  return next;
+}
+
+export function tickPostMasteryCounters(progress: ProgressByCard): ProgressByCard {
+  const next: ProgressByCard = { ...progress };
+  for (const [id, p] of Object.entries(progress)) {
+    if (!p.mastered) continue;
+    next[id] = { ...p, cardsShownSinceMastered: p.cardsShownSinceMastered + 1 };
+  }
+  return next;
+}
+
+// ---------------------------------------------------------------------------
 // Visibility score — spec §8
 // ---------------------------------------------------------------------------
 
@@ -438,7 +488,9 @@ export function visibilityScore(
 ): number {
   // Hard rules.
   if (card.id === state.previousCardId && state.activeSet.length > 1) return 0;
-  if (cardProgress.mastered) return 0;
+  if (cardProgress.mastered) {
+    return eligibleForSprinkle(cardProgress, state) ? W_SPRINKLE : 0;
+  }
 
   let score = W_BASE;
 
@@ -528,6 +580,26 @@ export function chooseNextCard(
     .filter((c): c is LetterCard => c !== undefined);
 
   if (activeCards.length === 0) {
+    // Path-complete fallback (spec §11): when the entire path is mastered, the
+    // active set drains to empty. Score from the full mastered path with
+    // sprinkle weight + anti-repeat hard rule.
+    if (isPathComplete(cards, progress)) {
+      const masteredCards = cards.filter(
+        (c) => getProgressForCard(progress, c.id).mastered,
+      );
+      const scored: Array<[LetterCard, number]> = masteredCards.map((card) => {
+        if (card.id === state.previousCardId && masteredCards.length > 1) {
+          return [card, 0];
+        }
+        return [card, W_SPRINKLE];
+      });
+      const filtered = scored.filter(([, s]) => s > 0);
+      if (filtered.length === 0) {
+        return masteredCards[0] ?? cards[0];
+      }
+      return weightedRandomPick(filtered, rng);
+    }
+
     // Defensive: fall back to any unmastered card on the path, else first card.
     const fallback = cards.find(
       (c) => !getProgressForCard(progress, c.id).mastered,

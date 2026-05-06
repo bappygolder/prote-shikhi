@@ -27,16 +27,21 @@ import {
   applyActiveSetOnMastery,
   applyGrade,
   chooseNextCard,
+  eligibleForSprinkle,
   getProgressForCard,
   getUnlockedCards,
   initSessionState,
+  isPathComplete,
   isPresetComplete,
   maybeEnterStruggleMode,
   maybeExitStruggleMode,
   migrateProgress,
   pushBounded,
   resetCards,
+  tickPostMasteryCounters,
+  tickSprinkleCooldowns,
   RECENT_WINDOW,
+  SPRINKLE_COOLDOWN,
   WARMUP_PER_CARD,
   type ProgressByCard,
   type ProgressState,
@@ -743,8 +748,11 @@ export default function App() {
   }
 
   function handleGrade(wasCorrect: boolean) {
+    const wasPathCompleteBefore = isPathComplete(selectedPresetCards, progress);
     const current = getProgressForCard(progress, currentCard.id);
-    const nextProgress = applyGrade(progress, currentCard.id, wasCorrect);
+    const gradedProgress = applyGrade(progress, currentCard.id, wasCorrect);
+    // Spec §7: every grade bumps cardsShownSinceMastered for all mastered cards.
+    const nextProgress = tickPostMasteryCounters(gradedProgress);
     const nextCardProgress = getProgressForCard(nextProgress, currentCard.id);
 
     const wasFirstCountedCorrect =
@@ -837,12 +845,27 @@ export default function App() {
 
     // Bump chosen card's attemptsSinceEnteringActive (spec §10).
     const chosenProgress = getProgressForCard(progressForSelection, chosen.id);
+
+    // Sprinkle bookkeeping (spec §12). A mastered card that surfaces is the
+    // sprinkle event; reset its cooldown. Tick other mastered cards' cooldowns.
+    const chosenIsSprinkle =
+      chosenProgress.mastered &&
+      eligibleForSprinkle(chosenProgress, nextSession);
+    const sprinkledChosenProgress = chosenIsSprinkle
+      ? { ...chosenProgress, sprinkleCooldown: SPRINKLE_COOLDOWN }
+      : chosenProgress;
+
+    const tickedProgress = tickSprinkleCooldowns(
+      progressForSelection,
+      chosen.id,
+    );
+
     const finalProgress: ProgressByCard = {
-      ...progressForSelection,
+      ...tickedProgress,
       [chosen.id]: {
-        ...chosenProgress,
+        ...sprinkledChosenProgress,
         attemptsSinceEnteringActive:
-          chosenProgress.attemptsSinceEnteringActive + 1,
+          sprinkledChosenProgress.attemptsSinceEnteringActive + 1,
       },
     };
 
@@ -852,6 +875,13 @@ export default function App() {
       previousCardId: chosen.id,
       cardsShown: nextSession.cardsShown + 1,
     };
+
+    if (
+      isPathComplete(selectedPresetCards, finalProgress) &&
+      !wasPathCompleteBefore
+    ) {
+      console.log('[bornomala] path complete:', selectedPreset.id);
+    }
 
     playFeedback(wasCorrect);
     setProgress(finalProgress);

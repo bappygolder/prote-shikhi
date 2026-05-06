@@ -7,10 +7,14 @@ import {
   applyActiveSetOnMastery,
   applyGrade,
   chooseNextCard,
+  eligibleForSprinkle,
   initSessionState,
+  isPathComplete,
   maybeEnterStruggleMode,
   maybeExitStruggleMode,
   migrateProgress,
+  tickPostMasteryCounters,
+  tickSprinkleCooldowns,
   visibilityScore,
   ACTIVE_SET_START,
   ACTIVE_SET_STEADY,
@@ -18,7 +22,9 @@ import {
   MASTERY_TARGET,
   NEW_CARD_BOOST_DURATION,
   NEW_CARD_BOOST_WEIGHT,
+  NEWLY_MASTERED_QUIET_PERIOD,
   PENALTY_MAX,
+  SPRINKLE_EVERY_N_CARDS,
   STRUGGLE_RECOVERY_STREAK,
   WARMUP_PER_CARD,
   getProgressForCard,
@@ -451,4 +457,143 @@ test('maybeExitStruggleMode: 6 consecutive correct exits; active set restored', 
   assert.equal(next.inStruggleMode, false);
   assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
   assert.equal(next.prePushedActiveSet, null);
+});
+
+// ---------------------------------------------------------------------------
+// CTX-07 — sprinkle, path-complete, post-mastery counters
+// ---------------------------------------------------------------------------
+
+function masteredProgress(
+  id: string,
+  patch: Partial<LetterProgress> = {},
+): LetterProgress {
+  return {
+    ...getProgressForCard({}, id),
+    mastered: true,
+    cardsShownSinceMastered: NEWLY_MASTERED_QUIET_PERIOD,
+    sprinkleCooldown: 0,
+    ...patch,
+  };
+}
+
+test('eligibleForSprinkle: returns false for un-mastered cards', () => {
+  const path = makePath(2);
+  const state: SessionState = {
+    ...initSessionState(path, {}),
+    cardsShown: SPRINKLE_EVERY_N_CARDS,
+  };
+  const cardProgress: LetterProgress = {
+    ...getProgressForCard({}, 'card-1'),
+    mastered: false,
+  };
+  assert.equal(eligibleForSprinkle(cardProgress, state), false);
+});
+
+test('eligibleForSprinkle: returns false during quiet period', () => {
+  const path = makePath(2);
+  const state: SessionState = {
+    ...initSessionState(path, {}),
+    cardsShown: SPRINKLE_EVERY_N_CARDS,
+  };
+  const cardProgress = masteredProgress('card-1', {
+    cardsShownSinceMastered: NEWLY_MASTERED_QUIET_PERIOD - 1,
+  });
+  assert.equal(eligibleForSprinkle(cardProgress, state), false);
+});
+
+test('eligibleForSprinkle: returns false during struggle mode', () => {
+  const path = makePath(2);
+  const state: SessionState = {
+    ...initSessionState(path, {}),
+    cardsShown: SPRINKLE_EVERY_N_CARDS,
+    inStruggleMode: true,
+  };
+  const cardProgress = masteredProgress('card-1');
+  assert.equal(eligibleForSprinkle(cardProgress, state), false);
+});
+
+test('eligibleForSprinkle: returns true on the 7th card when cooldown=0 + quiet period passed', () => {
+  const path = makePath(2);
+  const state: SessionState = {
+    ...initSessionState(path, {}),
+    cardsShown: SPRINKLE_EVERY_N_CARDS,
+    inStruggleMode: false,
+  };
+  const cardProgress = masteredProgress('card-1');
+  assert.equal(eligibleForSprinkle(cardProgress, state), true);
+});
+
+test('eligibleForSprinkle: returns false when cooldown > 0', () => {
+  const path = makePath(2);
+  const state: SessionState = {
+    ...initSessionState(path, {}),
+    cardsShown: SPRINKLE_EVERY_N_CARDS,
+  };
+  const cardProgress = masteredProgress('card-1', { sprinkleCooldown: 5 });
+  assert.equal(eligibleForSprinkle(cardProgress, state), false);
+});
+
+test('tickSprinkleCooldowns: decrements mastered cards; floors at 0; un-mastered untouched; just-shown unaffected', () => {
+  const progress: ProgressByCard = {
+    'card-1': masteredProgress('card-1', { sprinkleCooldown: 5 }),
+    'card-2': masteredProgress('card-2', { sprinkleCooldown: 0 }),
+    'card-3': masteredProgress('card-3', { sprinkleCooldown: 12 }),
+    'card-4': { ...getProgressForCard({}, 'card-4'), sprinkleCooldown: 9 }, // unmastered
+  };
+  const next = tickSprinkleCooldowns(progress, 'card-3');
+  assert.equal(next['card-1'].sprinkleCooldown, 4); // decremented
+  assert.equal(next['card-2'].sprinkleCooldown, 0); // floored
+  assert.equal(next['card-3'].sprinkleCooldown, 12); // just-shown unchanged
+  assert.equal(next['card-4'].sprinkleCooldown, 9); // un-mastered unchanged
+});
+
+test('tickPostMasteryCounters: increments cardsShownSinceMastered for mastered cards only', () => {
+  const progress: ProgressByCard = {
+    'card-1': masteredProgress('card-1', { cardsShownSinceMastered: 3 }),
+    'card-2': { ...getProgressForCard({}, 'card-2'), cardsShownSinceMastered: 0 },
+  };
+  const next = tickPostMasteryCounters(progress);
+  assert.equal(next['card-1'].cardsShownSinceMastered, 4);
+  assert.equal(next['card-2'].cardsShownSinceMastered, 0); // un-mastered untouched
+});
+
+test('isPathComplete: true iff every path card is mastered', () => {
+  const path = makePath(3);
+  let progress: ProgressByCard = {};
+  assert.equal(isPathComplete(path, progress), false);
+
+  progress = {
+    'card-1': masteredProgress('card-1'),
+    'card-2': masteredProgress('card-2'),
+  };
+  assert.equal(isPathComplete(path, progress), false); // card-3 missing
+
+  progress = {
+    'card-1': masteredProgress('card-1'),
+    'card-2': masteredProgress('card-2'),
+    'card-3': masteredProgress('card-3'),
+  };
+  assert.equal(isPathComplete(path, progress), true);
+});
+
+test('chooseNextCard in path-complete state: returns a mastered card; respects anti-repeat', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': masteredProgress('card-1'),
+    'card-2': masteredProgress('card-2'),
+    'card-3': masteredProgress('card-3'),
+  };
+  // empty active set → forces path-complete fallback inside chooseNextCard
+  const session: SessionState = {
+    ...initSessionState(path, progress),
+    activeSet: [],
+    previousCardId: 'card-1',
+  };
+  const rng = mulberry32(7);
+  const masteredIds = new Set(['card-1', 'card-2', 'card-3']);
+  for (let i = 0; i < 100; i++) {
+    const chosen = chooseNextCard(path, progress, 'card-1', session, rng);
+    assert.ok(masteredIds.has(chosen.id), `chosen must be mastered: ${chosen.id}`);
+    assert.notEqual(chosen.id, 'card-1', 'anti-repeat must hold');
+  }
 });

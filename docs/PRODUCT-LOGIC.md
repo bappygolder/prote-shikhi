@@ -39,7 +39,8 @@ The app is not trying to replace the teacher in the MVP. It gives the teacher a 
 | Rule | Current value | Why |
 |---|---:|---|
 | Starter content | Letter/sign presets | Lets a teacher choose a small useful set |
-| Mastery target | 10 correct answers | Simple visible goal |
+| Mastery target | 10 correct **in a row** (streak resets on wrong) | Truer mastery signal |
+| Per-card warm-up | First 5 corrects per card don't count toward the bar | Lets learners get familiar before scoring pressure |
 | Initial unlock count | 5 letters | Avoid overwhelming the learner |
 | Unlock step | 2 letters | Gradual expansion after mastery |
 | Grading modes | Right / Wrong | Keeps human-assisted MVP fast |
