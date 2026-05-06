@@ -49,8 +49,10 @@ import {
   type SessionState,
 } from './lib/learning';
 
-const STORAGE_KEY = 'bornomala.progress.v1';
-const LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
+const STORAGE_KEY = 'porashikhi.progress.v1';
+const LAST_TAB_STORAGE_KEY = 'porashikhi.lastTab.v1';
+const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
+const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const DEFAULT_PRESET = PRACTICE_PRESETS[0];
 const APP_VERSION = `v${Constants.expoConfig?.version ?? '0.0.0'}`;
@@ -474,25 +476,42 @@ export default function App() {
     Promise.all([
       AsyncStorage.getItem(STORAGE_KEY),
       AsyncStorage.getItem(LAST_TAB_STORAGE_KEY),
+      AsyncStorage.getItem(LEGACY_STORAGE_KEY),
+      AsyncStorage.getItem(LEGACY_LAST_TAB_STORAGE_KEY),
     ])
-      .then(([savedProgress, savedTab]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab]) => {
         if (!isMounted) {
           return;
         }
 
-        if (savedProgress) {
+        // One-time migration from bornomala.* keys (pre-rebrand) to porashikhi.* keys.
+        let progressToUse = savedProgress;
+        let tabToUse = savedTab;
+        if (!progressToUse && legacyProgress) {
+          progressToUse = legacyProgress;
+          await AsyncStorage.setItem(STORAGE_KEY, legacyProgress).catch(() => {});
+          await AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
+          console.log('[porashikhi] migrated progress from bornomala.* keys');
+        }
+        if (!tabToUse && legacyTab) {
+          tabToUse = legacyTab;
+          await AsyncStorage.setItem(LAST_TAB_STORAGE_KEY, legacyTab).catch(() => {});
+          await AsyncStorage.removeItem(LEGACY_LAST_TAB_STORAGE_KEY).catch(() => {});
+        }
+
+        if (progressToUse) {
           try {
-            const parsed: unknown = JSON.parse(savedProgress);
+            const parsed: unknown = JSON.parse(progressToUse);
             const state = migrateProgress(parsed);
             setProgress(state.byCard);
             setSession(initSessionState(DEFAULT_PRESET.cards, state.byCard));
           } catch (parseError) {
-            console.warn('[bornomala] Could not migrate stored progress, starting fresh.', parseError);
+            console.warn('[porashikhi] Could not migrate stored progress, starting fresh.', parseError);
           }
         }
 
-        if (isPersistedTab(savedTab)) {
-          setCurrentTab(savedTab);
+        if (isPersistedTab(tabToUse)) {
+          setCurrentTab(tabToUse);
         }
       })
       .catch(() => {
@@ -882,7 +901,7 @@ export default function App() {
       isPathComplete(selectedPresetCards, finalProgress) &&
       !wasPathCompleteBefore
     ) {
-      console.log('[bornomala] path complete:', selectedPreset.id);
+      console.log('[porashikhi] path complete:', selectedPreset.id);
     }
 
     playFeedback(wasCorrect);
@@ -1462,15 +1481,7 @@ export default function App() {
               </Pressable>
 
               <View style={[styles.footerContainer, { zIndex: 20 }]}>
-                <Text style={styles.footerText}>
-                  Built by{' '}
-                  <Text
-                    onPress={() => Linking.openURL('https://www.linkedin.com/in/bappygolder/')}
-                    style={styles.footerLink}
-                  >
-                    Bappy Golder
-                  </Text>
-                </Text>
+                <Text style={styles.footerText}>an oLab product</Text>
                 <View style={styles.poweredByRow}>
                   <Text style={styles.footerText}>
                     powered by{' '}
