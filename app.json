@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bornomala",
     "slug": "bornomala",
-    "version": "1.0.0",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,12 +22,16 @@
         "backgroundColor": "#20201f"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "lastUpdated": "Wednesday, 6 May 2026"
     }
   }
 }

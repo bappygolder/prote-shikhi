@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -52,8 +53,9 @@ const STORAGE_KEY = 'bornomala.progress.v1';
 const LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const DEFAULT_PRESET = PRACTICE_PRESETS[0];
-const APP_VERSION = 'v1.1.2';
-const LAST_UPDATED = 'Wednesday, 6 May 2026';
+const APP_VERSION = `v${Constants.expoConfig?.version ?? '0.0.0'}`;
+const LAST_UPDATED =
+  (Constants.expoConfig?.extra as { lastUpdated?: string } | undefined)?.lastUpdated ?? '—';
 
 const PERSISTED_TABS = ['path', 'letters', 'practice'] as const;
 type PersistedTab = (typeof PERSISTED_TABS)[number];

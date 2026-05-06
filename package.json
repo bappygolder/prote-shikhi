@@ -1,6 +1,6 @@
 {
   "name": "bornomala",
-  "version": "1.0.0",
+  "version": "1.1.2",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -10,12 +10,17 @@
     "build": "npm run build:web",
     "build:web": "expo export --platform web",
     "serve:web": "expo serve",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bump": "node scripts/bump-version.js",
+    "bump:patch": "node scripts/bump-version.js patch",
+    "bump:minor": "node scripts/bump-version.js minor",
+    "bump:major": "node scripts/bump-version.js major"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.33",
+    "expo-constants": "~18.0.13",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",

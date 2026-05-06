@@ -25,6 +25,19 @@ Then press `i` for iOS Simulator, `a` for Android, or scan the QR with Expo Go.
 npm run typecheck   # tsc --noEmit
 ```
 
+## Releasing (version bump)
+
+Single source of truth: `app.json`. The app footer reads `Constants.expoConfig?.version` at runtime, so what you see on screen is always what's in `app.json` — that's how you confirm a build is current.
+
+```bash
+npm run bump:patch   # 1.1.2 -> 1.1.3
+npm run bump:minor   # 1.1.2 -> 1.2.0
+npm run bump:major   # 1.1.2 -> 2.0.0
+npm run bump 2.5.0   # explicit version
+```
+
+Each bump updates `package.json` `version`, `app.json` `expo.version`, increments `expo.ios.buildNumber` and `expo.android.versionCode`, refreshes `expo.extra.lastUpdated` to today's date, and creates a `chore(version): bump app version to vX.Y.Z (YYYY-MM-DD)` commit. Push afterward and rebuild — the footer in the app will show the new version.
+
 ## Deploy to Vercel
 
 The production web export writes to `dist/`.
