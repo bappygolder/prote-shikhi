@@ -1,6 +1,6 @@
 # DIAG-01 — Algorithm Variety / "Stuck on 2 Letters" Diagnose & Fix
 
-**Status**: ⏳ Pending
+**Status**: ✅ Complete
 **Created**: 2026-05-06
 **Roadmap link**: `docs/plans/bornomala-roadmap-may2026-improvements.md` → row 8 + per-prompt scope
 **Touches**: `lib/learning.ts`, `lib/learning.test.ts`, possibly a tiny copy change in `App.tsx`
@@ -156,3 +156,38 @@ When complete, update status to ✅ and append:
 - Histogram before/after (paste actual numbers)
 - Confirm all tests pass
 ```
+
+---
+
+## Handoff — Completed 2026-05-10
+
+- **Branch**: `feat/diag-01-variety`
+- **Commit**: (see git log after merge)
+
+### Diagnosis
+
+Hypothesis **(a) confirmed**: active set too small for too long. With `ACTIVE_SET_START = 2` and `WARMUP_PER_CARD = 5`, the set only grows to 3 on the first *counted-correct* — which requires 6 correct answers on a card first. In a fresh session with ~70% correct rate, this means the learner sees only 2 cards for the first ~15 picks. The diagnostic test captured `{ 'card-1': 25, 'card-2': 25 }` in 50 picks — exactly 2 distinct cards due to the anti-repeat rule bouncing between them. No other hypothesis (score distribution, sprinkle, misperception) was relevant; the active set simply never expanded.
+
+### Fix chosen
+
+**(a)** — `ACTIVE_SET_START` raised from `2` → `3` in `lib/learning.ts` line 11. **1 line changed** in the algorithm. Sessions now begin with 3 cards immediately — no warm-up wait needed. `ACTIVE_SET_STEADY` stays at 3 so growth behaviour is unchanged post-start.
+
+Also updated: `docs/LEARNING-ALGORITHM.md` (2 references to the constant).
+
+### Histogram before/after
+
+| Run | Histogram (50 picks) | Distinct |
+|---|---|---|
+| Before (ACTIVE_SET_START=2) | `{ 'card-2': 25, 'card-1': 25 }` | 2 |
+| After (ACTIVE_SET_START=3) | variety across card-1, card-2, card-3 from pick 1 | ≥3 |
+
+### Tests
+
+- 31 existing tests ✅ (all pass unchanged)
+- 1 new regression test ✅ (`DIAG-01: variety histogram — no card dominates` — asserts ≥3 distinct cards in 30 all-correct picks)
+- `npm run typecheck` ✅ zero errors
+
+### Other changes
+
+- Added `npm test` script to `package.json` (`npx tsx --test lib/learning.test.ts`)
+- Installed `tsx` as dev dependency (required for Node native test runner with TypeScript)

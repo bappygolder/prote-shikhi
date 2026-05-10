@@ -597,3 +597,35 @@ test('chooseNextCard in path-complete state: returns a mastered card; respects a
     assert.notEqual(chosen.id, 'card-1', 'anti-repeat must hold');
   }
 });
+
+// ---------------------------------------------------------------------------
+// DIAG-01 — Variety regression guard
+//
+// Baseline (ACTIVE_SET_START=2): { 'card-1': 25, 'card-2': 25 } — distinct: 2
+// Hypothesis (a) confirmed: active set never grew past 2 during warm-up.
+// Fix: ACTIVE_SET_START raised 2→3 so sessions begin with 3 cards immediately.
+// Post-fix: distinct ≥ 3 in 30 all-correct picks.
+// ---------------------------------------------------------------------------
+
+test('DIAG-01: variety histogram — no card dominates', () => {
+  const rng = mulberry32(42);
+  const path = makePath(10);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  let session = initSessionState(path, progress);
+  let prog = progress;
+  const picks: string[] = [];
+
+  for (let i = 0; i < 30; i++) {
+    const card = chooseNextCard(path, prog, session.previousCardId ?? '', session, rng);
+    picks.push(card.id);
+    prog = applyGrade(prog, card.id, true); // all correct
+    session = {
+      ...session,
+      cardsShown: session.cardsShown + 1,
+      previousCardId: card.id,
+    };
+  }
+
+  const distinct = new Set(picks).size;
+  assert.ok(distinct >= 3, `expected ≥3 distinct cards in 30 picks, got ${distinct}`);
+});
