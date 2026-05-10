@@ -23,6 +23,7 @@ import {
   type LetterCard,
   type PracticePreset,
 } from './data/banglaLetters';
+import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
 import {
   applyActiveSetOnCorrect,
   applyActiveSetOnMastery,
@@ -188,6 +189,7 @@ function getEffectivePracticeCards(
 }
 
 function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
+  const { styles } = useTheme();
   const clampedPercent = Math.max(0, Math.min(100, percent));
   const clampedCompleted = Math.max(0, Math.min(total, completed));
   const animatedPercent = useRef(new Animated.Value(clampedPercent)).current;
@@ -245,6 +247,7 @@ function LetterProgressMark({
   percent,
   total,
 }: LetterProgressMarkProps) {
+  const { styles } = useTheme();
   const clampedPercent = Math.max(0, Math.min(100, percent));
   const clampedCompleted = Math.max(0, Math.min(total, completed));
   const animatedPercent = useRef(new Animated.Value(clampedPercent)).current;
@@ -316,6 +319,7 @@ type UniverseHeatmapProps = {
 };
 
 function UniverseHeatmap({ cards, progress, onTapCard }: UniverseHeatmapProps) {
+  const { styles } = useTheme();
   return (
     <View style={styles.universeWrap}>
       <View style={styles.universeGrid}>
@@ -360,6 +364,7 @@ function PresetPath({
   onSelect,
   onLongPressReset,
 }: PresetPathProps) {
+  const { styles } = useTheme();
   return (
     <View style={styles.pathColumn}>
       {presets.map((preset, index) => {
@@ -448,7 +453,8 @@ function PresetPath({
   );
 }
 
-export default function App() {
+function App() {
+  const { isDark, preference, setPreference, styles } = useTheme();
   const [progress, setProgress] = useState<ProgressByCard>({});
   const [sessionStats, setSessionStats] = useState<SessionStats>(
     initialSessionStats,
@@ -726,6 +732,31 @@ export default function App() {
       useNativeDriver: true,
     }).start();
   }, [cardEntrance, currentCard.id]);
+
+  const keyboardStateRef = useRef({ currentTab, gradeFeedback, isMenuOpen });
+  useEffect(() => {
+    keyboardStateRef.current = { currentTab, gradeFeedback, isMenuOpen };
+  });
+  const handleGradeRef = useRef(handleGrade);
+  useEffect(() => {
+    handleGradeRef.current = handleGrade;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const s = keyboardStateRef.current;
+      if (s.currentTab !== 'practice' || s.gradeFeedback !== null || s.isMenuOpen) return;
+      if (e.key === ' ' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleGradeRef.current(true);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleGradeRef.current(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   function handleOpenMenu() {
     setIsMenuOpen(true);
@@ -1018,7 +1049,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <View style={styles.shell}>
         <View style={styles.header}>
@@ -1271,6 +1302,33 @@ export default function App() {
         )}
       </View>
 
+      <View style={styles.appFooter}>
+        <Text style={styles.footerText}>
+          Built by Bappy Golder, powered by{' '}
+          <Text
+            onPress={() => Linking.openURL('https://olab.com.au/')}
+            style={styles.footerLink}
+          >
+            oLab
+          </Text>
+        </Text>
+        <Text style={styles.footerVersion}>{APP_VERSION}</Text>
+        <Pressable
+          onPress={() => setShowInfoTooltip(!showInfoTooltip)}
+          style={styles.infoIconContainer}
+        >
+          <Text style={styles.infoIcon}>ⓘ</Text>
+        </Pressable>
+        {showInfoTooltip && (
+          <View style={styles.tooltipContainer}>
+            <Text style={styles.tooltipLabel}>LAST UPDATED</Text>
+            <Text style={styles.tooltipValue}>{LAST_UPDATED}</Text>
+            <View style={styles.tooltipDivider} />
+            <Text style={styles.tooltipVersion}>{APP_VERSION}</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.bottomNav}>
         <Pressable
           accessibilityLabel="শেখার পথ দেখুন"
@@ -1428,6 +1486,22 @@ export default function App() {
             >
               <View style={styles.menuList}>
                 <View style={styles.menuItem}>
+                  <Text style={styles.menuLabel}>থিম</Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {(['system', 'light', 'dark'] as ThemePreference[]).map((p) => (
+                      <Pressable
+                        key={p}
+                        onPress={() => setPreference(p)}
+                        style={[styles.themeChip, preference === p && styles.themeChipActive]}
+                      >
+                        <Text style={[styles.themeChipText, preference === p && styles.themeChipTextActive]}>
+                          {p === 'system' ? '🌗' : p === 'light' ? '☀️' : '🌙'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.menuItem}>
                   <Text style={styles.menuLabel}>প্রিসেট</Text>
                   <Text style={styles.menuValue}>{selectedPreset.label}</Text>
                 </View>
@@ -1496,34 +1570,17 @@ export default function App() {
                 <Text style={styles.resetText}>আবার শুরু</Text>
               </Pressable>
 
-              <View style={[styles.footerContainer, { zIndex: 20 }]}>
-                <Text style={styles.footerText}>an oLab product</Text>
-                <View style={styles.poweredByRow}>
-                  <Text style={styles.footerText}>
-                    powered by{' '}
-                    <Text
-                      onPress={() => Linking.openURL('https://olab.com.au/')}
-                      style={styles.footerLink}
-                    >
-                      oLab
-                    </Text>
-                  </Text>
-                  <Text style={styles.footerVersion}>{APP_VERSION}</Text>
-                  <Pressable
-                    onPress={() => setShowInfoTooltip(!showInfoTooltip)}
-                    style={styles.infoIconContainer}
+              <View style={styles.footerContainer}>
+                <Text style={styles.footerText}>
+                  Built by Bappy Golder, powered by{' '}
+                  <Text
+                    onPress={() => Linking.openURL('https://olab.com.au/')}
+                    style={styles.footerLink}
                   >
-                    <Text style={styles.infoIcon}>ⓘ</Text>
-                  </Pressable>
-                </View>
-                {showInfoTooltip && (
-                  <View style={styles.tooltipContainer}>
-                    <Text style={styles.tooltipLabel}>LAST UPDATED</Text>
-                    <Text style={styles.tooltipValue}>{LAST_UPDATED}</Text>
-                    <View style={styles.tooltipDivider} />
-                    <Text style={styles.tooltipVersion}>{APP_VERSION}</Text>
-                  </View>
-                )}
+                    oLab
+                  </Text>
+                </Text>
+                <Text style={styles.footerVersion}>{APP_VERSION}</Text>
               </View>
             </ScrollView>
           </Animated.View>
@@ -1533,840 +1590,11 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#f7f3e8',
-  },
-  shell: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  header: {
-    minHeight: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerSpacer: {
-    width: 44,
-  },
-  titleBlock: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 3,
-  },
-  brand: {
-    color: '#111827',
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  stage: {
-    color: '#4b5563',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  practiceContent: {
-    flex: 1,
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  progressStack: {
-    gap: 8,
-    marginTop: -2,
-  },
-  progressBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 32,
-  },
-  progressLabel: {
-    color: '#8b8790',
-    width: 68,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  progressValue: {
-    color: '#8b8790',
-    flexShrink: 0,
-    width: 42,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-    textAlign: 'right',
-  },
-  progressTrack: {
-    position: 'relative',
-    flex: 1,
-    height: 20,
-    overflow: 'hidden',
-    borderColor: '#e8deca',
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: '#fbf6e9',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 10,
-    backgroundColor: '#88d4c9',
-  },
-  progressBreakpoint: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    width: 1,
-    backgroundColor: 'rgba(143, 130, 105, 0.18)',
-  },
-  card: {
-    flex: 1,
-    minHeight: 250,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderColor: '#111827',
-    borderRadius: 8,
-    borderWidth: 2,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 24,
-    paddingBottom: 26,
-    paddingTop: 26,
-  },
-  glyphZone: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stripZone: {
-    width: '100%',
-    alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-  cardAccent: {
-    position: 'absolute',
-    width: 104,
-    height: 10,
-    borderRadius: 5,
-    opacity: 0.5,
-  },
-  cardAccentTop: {
-    top: 24,
-    left: -28,
-    backgroundColor: '#f59e0b',
-  },
-  cardAccentBottom: {
-    right: -24,
-    bottom: 30,
-    backgroundColor: '#14b8a6',
-  },
-  letter: {
-    color: '#111827',
-    fontSize: 168,
-    fontWeight: '700',
-    letterSpacing: 0,
-    textAlign: 'center',
-  },
-  vowelSignLetter: {
-    fontSize: 140,
-  },
-  letterProgressMark: {
-    width: '82%',
-    maxWidth: 320,
-    minHeight: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderColor: '#ece5d5',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#fffdf7',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  letterProgressGlyph: {
-    color: '#b9b2a6',
-    width: 42,
-    fontSize: 32,
-    fontWeight: '900',
-    includeFontPadding: true,
-    letterSpacing: 0,
-    lineHeight: 48,
-    textAlign: 'center',
-  },
-  letterProgressBody: {
-    flex: 1,
-    gap: 6,
-  },
-  letterProgressTopRow: {
-    minHeight: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  letterProgressLabel: {
-    color: '#8b8790',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  letterProgressValue: {
-    color: '#8b8790',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  letterProgressTrack: {
-    position: 'relative',
-    height: 18,
-    overflow: 'hidden',
-    borderColor: '#e5ddc7',
-    borderRadius: 9,
-    borderWidth: 1,
-    backgroundColor: '#f8f1e3',
-  },
-  letterProgressFill: {
-    height: '100%',
-    borderRadius: 9,
-    backgroundColor: '#f97316',
-  },
-  letterProgressBreakpoint: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    width: 1,
-    backgroundColor: 'rgba(143, 130, 105, 0.18)',
-  },
-  feedbackBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    minHeight: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-  },
-  feedbackRight: {
-    borderColor: '#86efac',
-    backgroundColor: '#ecfdf3',
-  },
-  feedbackWrong: {
-    borderColor: '#fed7aa',
-    backgroundColor: '#fff7ed',
-  },
-  feedbackText: {
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  feedbackRightText: {
-    color: '#047857',
-  },
-  feedbackWrongText: {
-    color: '#c2410c',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    minHeight: 68,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  wrongButton: {
-    borderColor: '#fecaca',
-    backgroundColor: '#fff1f2',
-  },
-  rightButton: {
-    borderColor: '#bbf7d0',
-    backgroundColor: '#ecfdf3',
-  },
-  buttonPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.99 }],
-  },
-  actionText: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  wrongText: {
-    color: '#be123c',
-  },
-  rightText: {
-    color: '#047857',
-  },
-  lettersScreen: {
-    flex: 1,
-    gap: 14,
-  },
-  lettersTopRow: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  lettersTitle: {
-    color: '#111827',
-    fontSize: 25,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  lettersMeta: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0,
-    marginTop: 2,
-  },
-  lettersCountBadge: {
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#bae6fd',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#eff6ff',
-  },
-  lettersCountText: {
-    color: '#1d4ed8',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  practiceListRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  practiceListButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    borderColor: '#e5ddc7',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#fffaf0',
-    paddingHorizontal: 12,
-  },
-  practiceListButtonActive: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
-  },
-  practiceListButtonDisabled: {
-    opacity: 0.42,
-  },
-  practiceListText: {
-    color: '#374151',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  practiceListTextActive: {
-    color: '#ffffff',
-  },
-  practiceListCount: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  practiceListCountActive: {
-    color: '#facc15',
-  },
-  letterGridScroll: {
-    flex: 1,
-  },
-  letterGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingBottom: 8,
-  },
-  letterTile: {
-    width: '31.4%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#e5ddc7',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#ffffff',
-  },
-  letterTileStarted: {
-    borderColor: '#fed7aa',
-    backgroundColor: '#fff7ed',
-  },
-  letterTileMastered: {
-    borderColor: '#bbf7d0',
-    backgroundColor: '#ecfdf3',
-  },
-  letterTileActive: {
-    borderColor: '#111827',
-    borderWidth: 2,
-  },
-  tilePressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.97 }],
-  },
-  letterTileLetter: {
-    color: '#111827',
-    fontSize: 50,
-    fontWeight: '800',
-    includeFontPadding: true,
-    letterSpacing: 0,
-    lineHeight: 76,
-    textAlign: 'center',
-  },
-  letterPercent: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    color: '#4b5563',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  pathScreen: {
-    flex: 1,
-    gap: 14,
-  },
-  universeWrap: {
-    borderColor: '#ece5d5',
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: '#fffdf7',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  universeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  universeCell: {
-    width: 18,
-    height: 18,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: '#e5ddc7',
-    backgroundColor: '#ffffff',
-  },
-  universeCellStarted: {
-    borderColor: '#fed7aa',
-    backgroundColor: '#fff7ed',
-  },
-  universeCellMastered: {
-    borderColor: '#86efac',
-    backgroundColor: '#86efac',
-  },
-  universeCellPressed: {
-    opacity: 0.6,
-  },
-  pathScroll: {
-    flex: 1,
-  },
-  pathScrollContent: {
-    paddingTop: 4,
-    paddingBottom: 24,
-  },
-  pathColumn: {
-    gap: 14,
-  },
-  pathRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  pathRowLeft: {
-    paddingLeft: 12,
-    justifyContent: 'flex-start',
-  },
-  pathRowRight: {
-    paddingLeft: 96,
-    justifyContent: 'flex-start',
-  },
-  pathNode: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: '#e5ddc7',
-    backgroundColor: '#ffffff',
-  },
-  pathNodeLocked: {
-    opacity: 0.55,
-  },
-  pathNodeStarted: {
-    borderColor: '#fdba74',
-    backgroundColor: '#fff7ed',
-  },
-  pathNodeMastered: {
-    borderColor: '#86efac',
-    backgroundColor: '#ecfdf3',
-  },
-  pathNodeCurrent: {
-    borderColor: '#111827',
-    borderWidth: 3,
-    backgroundColor: '#fffbeb',
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  pathNodeGlyph: {
-    color: '#111827',
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 40,
-    textAlign: 'center',
-  },
-  pathNodeGlyphCurrent: {
-    color: '#f4512a',
-  },
-  pathNodeGlyphLocked: {
-    color: '#9ca3af',
-  },
-  pathNodeTick: {
-    color: '#047857',
-    fontSize: 30,
-    fontWeight: '900',
-    lineHeight: 34,
-  },
-  pathLabelBlock: {
-    flex: 1,
-    gap: 2,
-  },
-  pathLabel: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  pathLabelLocked: {
-    color: '#9ca3af',
-  },
-  pathCount: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  pathCountLocked: {
-    color: '#b8b8b8',
-  },
-  startPill: {
-    alignSelf: 'flex-start',
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: '#f4512a',
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    marginTop: 4,
-  },
-  startPillText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  bottomNav: {
-    width: '92%',
-    maxWidth: 440,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-    borderColor: '#e5e7eb',
-    borderRadius: 34,
-    borderWidth: 2,
-    backgroundColor: '#ffffff',
-    marginBottom: 14,
-    padding: 8,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  bottomTab: {
-    flex: 1,
-    minHeight: 76,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    borderRadius: 28,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  bottomTabActive: {
-    backgroundColor: '#f1f1f1',
-  },
-  bottomTabIcon: {
-    color: '#6f7080',
-    fontSize: 27,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 32,
-  },
-  bottomTabIconActive: {
-    color: '#f4512a',
-  },
-  bottomTabText: {
-    color: '#6f7080',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0,
-    lineHeight: 21,
-  },
-  bottomTabTextActive: {
-    color: '#f4512a',
-  },
-  menuLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 10,
-  },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(17, 24, 39, 0.38)',
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: '78%',
-    maxWidth: 340,
-    borderLeftColor: '#e5ddc7',
-    borderLeftWidth: 1,
-    backgroundColor: '#fffaf0',
-    paddingHorizontal: 20,
-    paddingTop: 52,
-    paddingBottom: 24,
-  },
-  menuHeader: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  menuTitle: {
-    color: '#111827',
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  closeIconButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fee2e2',
-    borderRadius: 18,
-  },
-  closeIconText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '900',
-    lineHeight: 18,
-  },
-  menuScroll: {
-    flex: 1,
-    marginTop: 4,
-  },
-  menuScrollContent: {
-    paddingBottom: 24,
-  },
-  menuList: {
-    gap: 0,
-    marginTop: 16,
-    borderTopColor: '#e5ddc7',
-    borderTopWidth: 1,
-  },
-  menuItem: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    borderBottomColor: '#e5ddc7',
-    borderBottomWidth: 1,
-  },
-  menuLabel: {
-    flex: 1,
-    color: '#4b5563',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  menuValue: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0,
-    textAlign: 'right',
-  },
-  collapsibleSection: {
-    marginTop: 14,
-  },
-  collapsibleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-  },
-  collapsibleTitle: {
-    color: '#111827',
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  collapsibleIcon: {
-    color: '#6b7280',
-    fontSize: 12,
-  },
-  collapsibleContent: {
-    marginTop: 4,
-  },
-  resetButton: {
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#fecaca',
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: '#fff1f2',
-    marginTop: 12,
-  },
-  resetText: {
-    color: '#be123c',
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  footerContainer: {
-    marginTop: 24,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  footerVersion: {
-    color: '#9ca3af',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  footerText: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  poweredByRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  footerLink: {
-    color: '#4b5563',
-    textDecorationLine: 'underline',
-  },
-  infoIconContainer: {
-    padding: 2,
-    marginTop: -4,
-  },
-  infoIcon: {
-    color: '#8b5cf6',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  tooltipContainer: {
-    position: 'absolute',
-    bottom: 50,
-    backgroundColor: '#1f2937',
-    padding: 16,
-    borderRadius: 8,
-    width: 280,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  tooltipLabel: {
-    color: '#9ca3af',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  tooltipValue: {
-    color: '#f3f4f6',
-    fontSize: 14,
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  tooltipDivider: {
-    height: 1,
-    backgroundColor: '#374151',
-    marginVertical: 12,
-  },
-  tooltipVersion: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  practiceListHint: {
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 6,
-    letterSpacing: 0,
-  },
-  pathHeatmapRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 4,
-  },
-  heatmapToggle: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5ddc7',
-    backgroundColor: '#fffdf7',
-  },
-  heatmapToggleText: {
-    fontSize: 18,
-    lineHeight: 22,
-  },
-});
+export default function AppRoot() {
+  return (
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  );
+}
+
