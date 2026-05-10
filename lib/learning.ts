@@ -8,7 +8,10 @@ export const PENALTY_MAX = 16;
 export const PENALTY_HALVE_ON_CORRECT = true;
 
 // Active-set sizing (spec §6).
-export const ACTIVE_SET_START = 2;
+// ACTIVE_SET_START raised 2→3 (DIAG-01): starting with 2 + WARMUP_PER_CARD=5
+// means the 3rd card never enters during early sessions — learner sees only 2
+// letters for the entire warm-up period. Starting with 3 gives immediate variety.
+export const ACTIVE_SET_START = 3;
 export const ACTIVE_SET_STEADY = 3;
 export const ACTIVE_SET_STRUGGLE = 2;
 
