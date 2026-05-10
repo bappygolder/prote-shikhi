@@ -201,6 +201,7 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
     { length: Math.max(0, total - 1) },
     (_, index) => `${((index + 1) / total) * 100}%` as `${number}%`,
   );
+  const [displayPercent, setDisplayPercent] = useState(clampedPercent);
 
   useEffect(() => {
     Animated.timing(animatedPercent, {
@@ -210,6 +211,13 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
       useNativeDriver: false,
     }).start();
   }, [animatedPercent, clampedPercent]);
+
+  useEffect(() => {
+    const id = animatedPercent.addListener(({ value }) => {
+      setDisplayPercent(Math.round(value));
+    });
+    return () => animatedPercent.removeListener(id);
+  }, [animatedPercent]);
 
   return (
     <View style={styles.progressBlock}>
@@ -234,6 +242,9 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
           />
         ))}
       </View>
+      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.progressPercent}>
+        {toBanglaNumber(displayPercent)}%
+      </Text>
       <Text adjustsFontSizeToFit numberOfLines={1} style={styles.progressValue}>
         {toBanglaNumber(clampedCompleted)}/{toBanglaNumber(total)}
       </Text>
@@ -733,9 +744,9 @@ function App() {
     }).start();
   }, [cardEntrance, currentCard.id]);
 
-  const keyboardStateRef = useRef({ currentTab, gradeFeedback, isMenuOpen });
+  const keyboardStateRef = useRef({ currentTab, isMenuOpen });
   useEffect(() => {
-    keyboardStateRef.current = { currentTab, gradeFeedback, isMenuOpen };
+    keyboardStateRef.current = { currentTab, isMenuOpen };
   });
   const handleGradeRef = useRef(handleGrade);
   useEffect(() => {
@@ -745,7 +756,7 @@ function App() {
     if (typeof window === 'undefined') return;
     const onKeyDown = (e: KeyboardEvent) => {
       const s = keyboardStateRef.current;
-      if (s.currentTab !== 'practice' || s.gradeFeedback !== null || s.isMenuOpen) return;
+      if (s.currentTab !== 'practice' || s.isMenuOpen) return;
       if (e.key === ' ' || e.key === 'ArrowRight') {
         e.preventDefault();
         handleGradeRef.current(true);
@@ -1047,6 +1058,10 @@ function App() {
     setCurrentTab('practice');
   }
 
+  if (!isLoaded) {
+    return null;
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -1142,7 +1157,7 @@ function App() {
                   {currentDisplayLetter}
                 </Text>
               </View>
-              <View style={styles.stripZone}>
+              <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
                 <LetterProgressMark
                   completed={currentProgress.correctCount}
                   letter={currentDisplayLetter}
@@ -1291,7 +1306,10 @@ function App() {
                     >
                       {displayLetter}
                     </Text>
-                    <Text style={styles.letterPercent}>
+                    <Text style={[
+                      styles.letterPercent,
+                      isMastered ? styles.letterPercentMastered : !hasProgress ? styles.letterPercentUntouched : undefined,
+                    ]}>
                       {toBanglaNumber(masteryPercent)}%
                     </Text>
                   </Pressable>

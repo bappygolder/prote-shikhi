@@ -237,6 +237,15 @@ function makeStyles(c: ColorTokens) {
       fontWeight: '700',
       letterSpacing: 0,
     },
+    progressPercent: {
+      color: c.textAccent,
+      flexShrink: 0,
+      width: 36,
+      fontSize: 13,
+      fontWeight: '700',
+      letterSpacing: 0,
+      textAlign: 'right',
+    },
     progressValue: {
       color: c.textMuted,
       flexShrink: 0,
@@ -589,6 +598,12 @@ function makeStyles(c: ColorTokens) {
       fontSize: 13,
       fontWeight: '900',
       letterSpacing: 0,
+    },
+    letterPercentUntouched: {
+      color: c.textDisabled,
+    },
+    letterPercentMastered: {
+      color: c.textSuccess,
     },
     pathScreen: {
       flex: 1,
