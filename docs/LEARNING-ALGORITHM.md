@@ -153,7 +153,7 @@ const WARMUP_PER_CARD = 5;             // per-card warm-up budget: 5 cumulative 
                                        // streak counting begins on the 6th correct of the card
 
 // active set
-const ACTIVE_SET_START = 2;            // session begins with this many cards in the active set
+const ACTIVE_SET_START = 3;            // session begins with this many cards in the active set (DIAG-01: raised 2→3)
 const ACTIVE_SET_STEADY = 3;           // size after first counted-correct; replacement-only after that
 const ACTIVE_SET_STRUGGLE = 2;         // shrink to this in struggle mode
 
@@ -346,7 +346,7 @@ The active set is small and bounded. It does NOT keep growing. New cards enter o
 
 ```
 session start:
-  activeSet = first ACTIVE_SET_START cards of path (i.e. 2 cards)
+  activeSet = first ACTIVE_SET_START cards of path (i.e. 3 cards)
   for each card in activeSet:
     card.attemptsSinceEnteringActive = 0
 
