@@ -1,6 +1,6 @@
 # CTX-08 — UI Quick-Wins Party
 
-**Status**: ⏳ Pending
+**Status**: ✅ Done
 **Created**: 2026-05-06
 **Roadmap link**: `docs/plans/bornomala-roadmap-may2026-improvements.md` → row 1 + per-prompt scope
 **Touches**: `App.tsx` only (no library changes, no schema changes)
@@ -108,3 +108,32 @@ When complete, update status to ✅ and append:
 - Any visual regressions observed (file as inbox items)
 - Confirm all tests pass
 ```
+
+---
+
+## Execution result — 2026-05-10
+
+**Branch**: `main`
+**Commit**: `c0b1c57`
+
+### Changes delivered
+1. ✅ Brand title `পড়তে শিখি` removed from all screen headers (no dedicated home screen — removed entirely)
+2. ✅ Okkhor header collapsed to single-line `অক্ষর · X/Y শেখা · <preset>` — right-side count badge removed
+3. ✅ Chip row reduced to `খোলা` + `সব`; helper line `এই অক্ষরগুলো এখন শেখা হচ্ছে` shown when `খোলা` active
+4. ✅ Heatmap toggle button (👁/🙈) added to path screen header; state persisted via `porashikhi.ui.heatmap.visible.v1`; default visible
+5. ✅ Pair grouping verified — ই/ঈ in adjacent rows, উ/ঊ adjacent; no reorder needed (3-col grid, order: অ আ ই | ঈ উ ঊ...)
+6. ✅ Path tab icon swapped `⇡` → `〰` with TODO comment for SVG/Lottie asset
+7. ✅ Shell `paddingTop` 18→8, `gap` 16→8; header `minHeight` 52→0 — ~30px recovered
+
+### Verification
+- `npm run typecheck` — ✅ clean (0 errors)
+- `npx tsx --test lib/learning.test.ts` — ✅ 32/32 pass (algorithm untouched)
+
+### Screenshots
+Not captured (no dev server started). Visual review recommended before merging to release.
+
+### Regressions observed
+None detected. The `stageLabel` variable and `brand`/`stage`/`titleBlock`/`lettersCountBadge`/`lettersCountText`/`lettersMeta` styles are now unused dead code — safe to remove in a future cleanup pass (UX-04 or a housekeeping CTX).
+
+### Next steps
+- CTX-09 (`feat/ctx-09-accounts`) can now merge on top — its single profile menu add touches the menu panel, not the header or chips
