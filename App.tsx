@@ -51,6 +51,7 @@ import {
 
 const STORAGE_KEY = 'porashikhi.progress.v1';
 const LAST_TAB_STORAGE_KEY = 'porashikhi.lastTab.v1';
+const HEATMAP_VISIBLE_KEY = 'porashikhi.ui.heatmap.visible.v1';
 const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
 const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -465,6 +466,7 @@ export default function App() {
   const [gradeFeedback, setGradeFeedback] = useState<GradeFeedback>(null);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
+  const [heatmapVisible, setHeatmapVisible] = useState(true);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -478,8 +480,9 @@ export default function App() {
       AsyncStorage.getItem(LAST_TAB_STORAGE_KEY),
       AsyncStorage.getItem(LEGACY_STORAGE_KEY),
       AsyncStorage.getItem(LEGACY_LAST_TAB_STORAGE_KEY),
+      AsyncStorage.getItem(HEATMAP_VISIBLE_KEY),
     ])
-      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap]) => {
         if (!isMounted) {
           return;
         }
@@ -512,6 +515,10 @@ export default function App() {
 
         if (isPersistedTab(tabToUse)) {
           setCurrentTab(tabToUse);
+        }
+
+        if (savedHeatmap !== null) {
+          setHeatmapVisible(savedHeatmap !== 'false');
         }
       })
       .catch(() => {
@@ -1017,21 +1024,31 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
 
-          <View style={styles.titleBlock}>
-            <Text style={styles.brand}>পড়তে শিখি</Text>
-            <Text style={styles.stage}>{stageLabel}</Text>
-          </View>
-
           <View style={styles.headerSpacer} />
         </View>
 
         {currentTab === 'path' ? (
           <View style={styles.pathScreen}>
-            <UniverseHeatmap
-              cards={LETTER_CARDS}
-              progress={progress}
-              onTapCard={handleChooseLetter}
-            />
+            <View style={styles.pathHeatmapRow}>
+              <Pressable
+                accessibilityLabel={heatmapVisible ? 'হিটম্যাপ লুকান' : 'হিটম্যাপ দেখান'}
+                onPress={() => {
+                  const next = !heatmapVisible;
+                  setHeatmapVisible(next);
+                  AsyncStorage.setItem(HEATMAP_VISIBLE_KEY, String(next)).catch(() => {});
+                }}
+                style={({ pressed }) => [styles.heatmapToggle, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.heatmapToggleText}>{heatmapVisible ? '👁️' : '🙈'}</Text>
+              </Pressable>
+            </View>
+            {heatmapVisible ? (
+              <UniverseHeatmap
+                cards={LETTER_CARDS}
+                progress={progress}
+                onTapCard={handleChooseLetter}
+              />
+            ) : null}
             <ScrollView
               contentContainerStyle={styles.pathScrollContent}
               showsVerticalScrollIndicator={false}
@@ -1156,58 +1173,57 @@ export default function App() {
         ) : (
           <View style={styles.lettersScreen}>
             <View style={styles.lettersTopRow}>
-              <View>
-                <Text style={styles.lettersTitle}>অক্ষর</Text>
-                <Text style={styles.lettersMeta}>
-                  {toBanglaNumber(masteredCount)}/
-                  {toBanglaNumber(selectedPresetCards.length)} শেখা
-                </Text>
-              </View>
-              <View style={styles.lettersCountBadge}>
-                <Text style={styles.lettersCountText}>
-                  {toBanglaNumber(selectedPresetCards.length)}
-                </Text>
-              </View>
+              <Text style={styles.lettersTitle}>
+                {'অক্ষর · '}
+                {toBanglaNumber(masteredCount)}/{toBanglaNumber(selectedPresetCards.length)}
+                {' শেখা · '}
+                {selectedPreset.label}
+              </Text>
             </View>
 
-            <View style={styles.practiceListRow}>
-              {PRACTICE_LISTS.map((list) => {
-                const isActive = selectedPracticeList === list.id;
-                const count = practiceListCounts[list.id];
-                const isDisabled = count === 0;
+            <View>
+              <View style={styles.practiceListRow}>
+                {PRACTICE_LISTS.filter((l) => l.id === 'unlocked' || l.id === 'all').map((list) => {
+                  const isActive = selectedPracticeList === list.id;
+                  const count = practiceListCounts[list.id];
+                  const isDisabled = count === 0;
 
-                return (
-                  <Pressable
-                    accessibilityLabel={`${list.label} তালিকা`}
-                    disabled={isDisabled}
-                    key={list.id}
-                    onPress={() => handleSelectPracticeList(list.id)}
-                    style={({ pressed }) => [
-                      styles.practiceListButton,
-                      isActive && styles.practiceListButtonActive,
-                      isDisabled && styles.practiceListButtonDisabled,
-                      pressed && styles.buttonPressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.practiceListText,
-                        isActive && styles.practiceListTextActive,
+                  return (
+                    <Pressable
+                      accessibilityLabel={`${list.label} তালিকা`}
+                      disabled={isDisabled}
+                      key={list.id}
+                      onPress={() => handleSelectPracticeList(list.id)}
+                      style={({ pressed }) => [
+                        styles.practiceListButton,
+                        isActive && styles.practiceListButtonActive,
+                        isDisabled && styles.practiceListButtonDisabled,
+                        pressed && styles.buttonPressed,
                       ]}
                     >
-                      {list.label}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.practiceListCount,
-                        isActive && styles.practiceListCountActive,
-                      ]}
-                    >
-                      {toBanglaNumber(count)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.practiceListText,
+                          isActive && styles.practiceListTextActive,
+                        ]}
+                      >
+                        {list.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.practiceListCount,
+                          isActive && styles.practiceListCountActive,
+                        ]}
+                      >
+                        {toBanglaNumber(count)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {selectedPracticeList === 'unlocked' ? (
+                <Text style={styles.practiceListHint}>এই অক্ষরগুলো এখন শেখা হচ্ছে</Text>
+              ) : null}
             </View>
 
             <ScrollView
@@ -1271,7 +1287,7 @@ export default function App() {
               currentTab === 'path' && styles.bottomTabIconActive,
             ]}
           >
-            ⇡
+            〰
           </Text>
           <Text
             adjustsFontSizeToFit
@@ -1527,13 +1543,13 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
-    gap: 16,
+    gap: 8,
     paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingTop: 8,
     paddingBottom: 10,
   },
   header: {
-    minHeight: 52,
+    minHeight: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2328,5 +2344,29 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 13,
     fontWeight: '600',
+  },
+  practiceListHint: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 6,
+    letterSpacing: 0,
+  },
+  pathHeatmapRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 4,
+  },
+  heatmapToggle: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5ddc7',
+    backgroundColor: '#fffdf7',
+  },
+  heatmapToggleText: {
+    fontSize: 18,
+    lineHeight: 22,
   },
 });
