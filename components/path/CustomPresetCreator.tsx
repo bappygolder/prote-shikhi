@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
@@ -7,7 +7,6 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -99,6 +98,138 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
   }
 
   const canSave = name.trim().length > 0 && orderedCards.length > 0;
+  const letterCount = orderedCards.filter((c) => c.type === 'letter').length;
+
+  const renderOrderedCard = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<OrderedCard>) => {
+      const label =
+        item.type === 'letter'
+          ? item.card.group === 'vowelSign'
+            ? `◌${item.card.letter}`
+            : item.card.letter
+          : item.word;
+      return (
+        <ScaleDecorator>
+          <Pressable
+            onLongPress={drag}
+            style={[creatorStyles.cardRow, isActive && creatorStyles.cardRowActive]}
+          >
+            <Text style={creatorStyles.cardRowText}>{label}</Text>
+            <Text style={creatorStyles.dragHandle}>⠿</Text>
+            <Pressable onPress={() => removeCard(item)} style={creatorStyles.cardRowRemove}>
+              <Text style={creatorStyles.cardRowRemoveText}>✕</Text>
+            </Pressable>
+          </Pressable>
+        </ScaleDecorator>
+      );
+    },
+    [removeCard],
+  );
+
+  const CreatorHeader = (
+    <>
+      {/* Name input */}
+      <View style={creatorStyles.section}>
+        <Text style={creatorStyles.sectionLabel}>পথের নাম</Text>
+        <TextInput
+          style={creatorStyles.nameInput}
+          placeholder="পথের নাম লিখুন..."
+          placeholderTextColor="#9ca3af"
+          value={name}
+          onChangeText={setName}
+          maxLength={40}
+          returnKeyType="done"
+        />
+      </View>
+
+      {/* Letter selection */}
+      <View style={creatorStyles.section}>
+        <Text style={creatorStyles.sectionLabel}>
+          অক্ষর বাছুন
+          {letterCount > 0 ? (
+            <Text style={creatorStyles.sectionCount}>
+              {' '}· {letterCount}টি বাছা হয়েছে
+            </Text>
+          ) : null}
+        </Text>
+        {LETTER_SECTIONS.map((section) => (
+          <View key={section.label} style={creatorStyles.letterGroup}>
+            <Text style={creatorStyles.letterGroupLabel}>{section.label}</Text>
+            <View style={creatorStyles.letterGrid}>
+              {section.cards.map((card) => {
+                const selected = orderedCards.some(
+                  (c) => c.type === 'letter' && c.card.id === card.id,
+                );
+                const display = card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
+                return (
+                  <Pressable
+                    key={card.id}
+                    accessibilityLabel={`${display} অক্ষর`}
+                    accessibilityState={{ selected }}
+                    onPress={() => toggleLetter(card)}
+                    style={({ pressed }) => [
+                      creatorStyles.letterCell,
+                      selected && creatorStyles.letterCellSelected,
+                      pressed && creatorStyles.letterCellPressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        creatorStyles.letterCellText,
+                        selected && creatorStyles.letterCellTextSelected,
+                      ]}
+                    >
+                      {display}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Word input */}
+      <View style={creatorStyles.section}>
+        <Text style={creatorStyles.sectionLabel}>শব্দ যোগ করুন</Text>
+        <Text style={creatorStyles.sectionHint}>বাংলা শব্দ বা অক্ষর লিখে যোগ করুন</Text>
+        <View style={creatorStyles.wordRow}>
+          <TextInput
+            style={creatorStyles.wordInput}
+            placeholder="শব্দ লিখুন..."
+            placeholderTextColor="#9ca3af"
+            value={wordInput}
+            onChangeText={setWordInput}
+            onSubmitEditing={handleAddWord}
+            returnKeyType="done"
+            maxLength={20}
+          />
+          <Pressable
+            accessibilityLabel="শব্দ যোগ করুন"
+            disabled={!wordInput.trim()}
+            onPress={handleAddWord}
+            style={({ pressed }) => [
+              creatorStyles.addWordBtn,
+              !wordInput.trim() && creatorStyles.addWordBtnDisabled,
+              pressed && wordInput.trim() && creatorStyles.addWordBtnPressed,
+            ]}
+          >
+            <Text
+              style={[
+                creatorStyles.addWordBtnText,
+                !wordInput.trim() && creatorStyles.addWordBtnTextDisabled,
+              ]}
+            >
+              যোগ করুন
+            </Text>
+          </Pressable>
+        </View>
+        {orderedCards.length > 0 ? (
+          <Text style={[creatorStyles.sectionLabel, creatorStyles.cardListLabel]}>কার্ডের ক্রম</Text>
+        ) : null}
+      </View>
+    </>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
@@ -129,145 +260,16 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
           </Pressable>
         </View>
 
-        <ScrollView
-          style={creatorStyles.scroll}
+        <DraggableFlatList
+          data={orderedCards}
+          keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
+          onDragEnd={({ data }) => setOrderedCards(data)}
+          renderItem={renderOrderedCard}
+          ListHeaderComponent={CreatorHeader}
           contentContainerStyle={creatorStyles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-        >
-          {/* Name input */}
-          <View style={creatorStyles.section}>
-            <Text style={creatorStyles.sectionLabel}>পথের নাম</Text>
-            <TextInput
-              style={creatorStyles.nameInput}
-              placeholder="পথের নাম লিখুন..."
-              placeholderTextColor="#9ca3af"
-              value={name}
-              onChangeText={setName}
-              maxLength={40}
-              returnKeyType="done"
-            />
-          </View>
-
-          {/* Letter selection */}
-          <View style={creatorStyles.section}>
-            <Text style={creatorStyles.sectionLabel}>
-              অক্ষর বাছুন
-              {orderedCards.filter((c) => c.type === 'letter').length > 0 ? (
-                <Text style={creatorStyles.sectionCount}>
-                  {' '}· {orderedCards.filter((c) => c.type === 'letter').length}টি বাছা হয়েছে
-                </Text>
-              ) : null}
-            </Text>
-            {LETTER_SECTIONS.map((section) => (
-              <View key={section.label} style={creatorStyles.letterGroup}>
-                <Text style={creatorStyles.letterGroupLabel}>{section.label}</Text>
-                <View style={creatorStyles.letterGrid}>
-                  {section.cards.map((card) => {
-                    const selected = orderedCards.some(
-                      (c) => c.type === 'letter' && c.card.id === card.id,
-                    );
-                    const display = card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
-                    return (
-                      <Pressable
-                        key={card.id}
-                        accessibilityLabel={`${display} অক্ষর`}
-                        accessibilityState={{ selected }}
-                        onPress={() => toggleLetter(card)}
-                        style={({ pressed }) => [
-                          creatorStyles.letterCell,
-                          selected && creatorStyles.letterCellSelected,
-                          pressed && creatorStyles.letterCellPressed,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            creatorStyles.letterCellText,
-                            selected && creatorStyles.letterCellTextSelected,
-                          ]}
-                        >
-                          {display}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            ))}
-          </View>
-
-          {/* Word input */}
-          <View style={creatorStyles.section}>
-            <Text style={creatorStyles.sectionLabel}>শব্দ যোগ করুন</Text>
-            <Text style={creatorStyles.sectionHint}>বাংলা শব্দ বা অক্ষর লিখে যোগ করুন</Text>
-            <View style={creatorStyles.wordRow}>
-              <TextInput
-                style={creatorStyles.wordInput}
-                placeholder="শব্দ লিখুন..."
-                placeholderTextColor="#9ca3af"
-                value={wordInput}
-                onChangeText={setWordInput}
-                onSubmitEditing={handleAddWord}
-                returnKeyType="done"
-                maxLength={20}
-              />
-              <Pressable
-                accessibilityLabel="শব্দ যোগ করুন"
-                disabled={!wordInput.trim()}
-                onPress={handleAddWord}
-                style={({ pressed }) => [
-                  creatorStyles.addWordBtn,
-                  !wordInput.trim() && creatorStyles.addWordBtnDisabled,
-                  pressed && wordInput.trim() && creatorStyles.addWordBtnPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    creatorStyles.addWordBtnText,
-                    !wordInput.trim() && creatorStyles.addWordBtnTextDisabled,
-                  ]}
-                >
-                  যোগ করুন
-                </Text>
-              </Pressable>
-            </View>
-            {orderedCards.length > 0 ? (
-              <View style={creatorStyles.cardList}>
-                <Text style={creatorStyles.sectionLabel}>কার্ডের ক্রম</Text>
-                <DraggableFlatList
-                  data={orderedCards}
-                  keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
-                  onDragEnd={({ data }) => setOrderedCards(data)}
-                  renderItem={({ item, drag, isActive }: RenderItemParams<OrderedCard>) => {
-                    const label =
-                      item.type === 'letter'
-                        ? item.card.group === 'vowelSign'
-                          ? `◌${item.card.letter}`
-                          : item.card.letter
-                        : item.word;
-                    return (
-                      <ScaleDecorator>
-                        <Pressable
-                          onLongPress={drag}
-                          style={[creatorStyles.cardRow, isActive && creatorStyles.cardRowActive]}
-                        >
-                          <Text style={creatorStyles.cardRowText}>{label}</Text>
-                          <Text style={creatorStyles.dragHandle}>⠿</Text>
-                          <Pressable
-                            onPress={() => removeCard(item)}
-                            style={creatorStyles.cardRowRemove}
-                          >
-                            <Text style={creatorStyles.cardRowRemoveText}>✕</Text>
-                          </Pressable>
-                        </Pressable>
-                      </ScaleDecorator>
-                    );
-                  }}
-                />
-              </View>
-            ) : null}
-          </View>
-        </ScrollView>
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -325,7 +327,6 @@ const creatorStyles = StyleSheet.create({
     color: '#9ca3af',
   },
 
-  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 16,
     paddingBottom: 40,
@@ -438,35 +439,8 @@ const creatorStyles = StyleSheet.create({
     color: '#9ca3af',
   },
 
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#fff1ee',
-    borderWidth: 1,
-    borderColor: '#f4512a',
-  },
-  chipPressed: { opacity: 0.7 },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#f4512a',
-  },
-  chipRemove: {
-    fontSize: 11,
-    color: '#f4512a',
-    fontWeight: '700',
-  },
-
-  cardList: {
-    gap: 8,
+  cardListLabel: {
+    marginTop: 8,
   },
   cardRow: {
     flexDirection: 'row',
