@@ -1,7 +1,7 @@
 # CTX-12 Handover — Progress Bar Bug Fixes
 
 **Branch**: `feat/ctx-11-path-switcher`  
-**Status**: All changes implemented and TypeScript-clean. Needs browser verification and commit.
+**Status**: ✅ Complete — code committed (bc78cb3), PR created. Do not re-run.
 
 ---
 
