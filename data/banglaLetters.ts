@@ -1,4 +1,4 @@
-export type LetterGroup = 'vowel' | 'vowelSign' | 'consonant' | 'number';
+export type LetterGroup = 'vowel' | 'vowelSign' | 'consonant' | 'number' | 'word';
 
 export type LetterCard = {
   id: string;
@@ -11,6 +11,12 @@ export type PracticePreset = {
   id: string;
   label: string;
   cards: LetterCard[];
+};
+
+// Custom (fast path) preset — extends PracticePreset so it's compatible with all learning functions.
+// Word cards use group: 'word' and store the word text in the letter field.
+export type CustomPreset = PracticePreset & {
+  createdAt: string;
 };
 
 export const MASTERY_TARGET = 10;

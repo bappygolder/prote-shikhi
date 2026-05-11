@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-export type PathView = 'zigzag' | 'flat';
+export type PathView = 'zigzag' | 'flat' | 'custom';
 
 export type PathSwitcherProps = {
   value: PathView;
@@ -10,6 +10,7 @@ export type PathSwitcherProps = {
 const TABS: { id: PathView; label: string }[] = [
   { id: 'zigzag', label: '〰 ঘুরে পথ' },
   { id: 'flat', label: '≡ সহজ পথ' },
+  { id: 'custom', label: '⚡ দ্রুত পথ' },
 ];
 
 export function PathSwitcher({ value, onChange }: PathSwitcherProps) {
@@ -71,7 +72,7 @@ const switcherStyles = StyleSheet.create({
     opacity: 0.75,
   },
   label: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
   labelActive: {
