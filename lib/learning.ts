@@ -133,15 +133,16 @@ function cardSlotCount(
 }
 
 function weightedNoConsecutiveShuffle(
-  ids: string[],
   slotMap: Map<string, number>,
   rng: () => number,
 ): string[] {
-  if (ids.length === 0) return [];
+  if (slotMap.size === 0) return [];
   const remaining = new Map(slotMap);
   const total = [...remaining.values()].reduce((a, b) => a + b, 0);
   const result: string[] = [];
 
+  // Greedy-max: always pick the highest-remaining-weight eligible card, ties broken randomly.
+  // This guarantees high-weight cards are spread through the sequence rather than clustering.
   for (let i = 0; i < total; i++) {
     const last = result[result.length - 1] ?? null;
     const eligible = [...remaining.entries()].filter(([id, w]) => w > 0 && id !== last);

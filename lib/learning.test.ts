@@ -74,10 +74,10 @@ function gradeMany(
 }
 
 // ---------------------------------------------------------------------------
-// weightedNoConsecutiveShuffle (internal helper — tested via exported wrapper)
+// weightedNoConsecutiveShuffle — contract tests (TDD red phase)
 // ---------------------------------------------------------------------------
-// We test it indirectly through buildCycleQueue weighted-slot tests in Task 2.
-// Direct tests below use a local re-implementation to confirm the contract.
+// These tests are INTENTIONALLY FAILING until Task 2 wires the helpers into
+// buildCycleQueue. They define the weighted-slot contract; Task 2 makes them green.
 
 test('weightedNoConsecutiveShuffle contract: total output length equals sum of weights', () => {
   // Import the helper indirectly by verifying buildCycleQueue output lengths.
