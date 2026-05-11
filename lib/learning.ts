@@ -5,8 +5,11 @@ import { type LetterCard } from '../data/banglaLetters';
 // ---------------------------------------------------------------------------
 
 export const LEVEL_COUNT = 4;
-export const CORRECT_PER_LEVEL = 5;
-export const SESSION_MASTERY_LEVEL = 2;
+// Phase 1: 5 correct in any order (no streak penalty). Phase 2: 10 consecutive. Phase 3: 5 consecutive.
+export const PHASE_THRESHOLDS = [5, 10, 5] as const;
+export const PHASE_CUMULATIVE = [0, 5, 15] as const; // prefix sums of PHASE_THRESHOLDS
+export const TOTAL_CORRECT_TO_MASTER = 20;
+export const SESSION_MASTERY_LEVEL = 3;
 export const SPACES_INIT = 2;
 export const SPACES_MIN = 2;
 export const SPACES_MAX = 4;
@@ -38,7 +41,7 @@ export type LetterProgress = {
 export type ProgressByCard = Record<string, LetterProgress>;
 
 export type ProgressState = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   byCard: ProgressByCard;
 };
 
@@ -172,8 +175,9 @@ export function applyGrade(
     const newLevelCorrect = current.levelCorrect + 1;
     let level = current.level;
     let levelCorrect = newLevelCorrect;
+    const threshold = PHASE_THRESHOLDS[current.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1];
 
-    if (newLevelCorrect >= CORRECT_PER_LEVEL) {
+    if (newLevelCorrect >= threshold) {
       level = current.level + 1;
       levelCorrect = 0;
     }
@@ -198,7 +202,8 @@ export function applyGrade(
     };
   }
 
-  // Wrong answer
+  // Wrong answer — Phase 1 (level 0) is free: wrongs don't reset the counter.
+  // Phases 2 & 3 require streaks, so wrongs reset levelCorrect.
   return {
     ...progress,
     [cardId]: {
@@ -208,7 +213,7 @@ export function applyGrade(
       lastSeenAt,
       firstSeenAt,
       dayHistory,
-      levelCorrect: 0, // reset within level
+      levelCorrect: current.level === 0 ? current.levelCorrect : 0,
       wrongFlag: true,
       lastShownCycleIndex,
     },
@@ -322,12 +327,12 @@ export function tickCycle(
     state.currentCycleWrongs > CYCLE_WRONGS_TO_SHRINK &&
     newSpaces.length > SPACES_MIN
   ) {
-    // Find weakest card: lowest (level * CORRECT_PER_LEVEL + levelCorrect)
+    // Find weakest card: lowest cumulative score
     let weakestId = newSpaces[0];
     let weakestScore = Infinity;
     for (const id of newSpaces) {
       const p = getProgressForCard(progress, id);
-      const score = p.level * CORRECT_PER_LEVEL + p.levelCorrect;
+      const score = (PHASE_CUMULATIVE[p.level] ?? TOTAL_CORRECT_TO_MASTER) + p.levelCorrect;
       if (score < weakestScore) {
         weakestScore = score;
         weakestId = id;
@@ -458,19 +463,17 @@ export function computeGlobalProgress(
   progress: ProgressByCard,
   cards: LetterCard[],
 ): { earned: number; max: number; percent: number } {
-  const PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL;
-
   let earned = 0;
   for (const card of cards) {
     const p = getProgressForCard(progress, card.id);
     const cardEarned = Math.min(
-      p.level * CORRECT_PER_LEVEL + p.levelCorrect,
-      PER_LETTER_EFFECTIVE_MAX,
+      (PHASE_CUMULATIVE[p.level] ?? TOTAL_CORRECT_TO_MASTER) + p.levelCorrect,
+      TOTAL_CORRECT_TO_MASTER,
     );
     earned += cardEarned;
   }
 
-  const max = cards.length * PER_LETTER_EFFECTIVE_MAX;
+  const max = cards.length * TOTAL_CORRECT_TO_MASTER;
   const percent = max === 0 ? 0 : Math.min(100, Math.round((earned / max) * 100));
   return { earned, max, percent };
 }
@@ -480,7 +483,25 @@ export function computeGlobalProgress(
 // ---------------------------------------------------------------------------
 
 export function migrateProgress(raw: unknown): ProgressState {
-  // Already v4 — but fill in any missing fields defensively (corrupt/partial blobs)
+  // Already v5 — fill in any missing fields defensively
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    (raw as { schemaVersion?: unknown }).schemaVersion === 5
+  ) {
+    const v5 = raw as { schemaVersion: 5; byCard: Record<string, unknown> };
+    const byCard: ProgressByCard = {};
+    for (const [id, entry] of Object.entries(v5.byCard ?? {})) {
+      if (entry !== null && typeof entry === 'object') {
+        byCard[id] = { ...defaultLetterProgress(), ...(entry as Partial<LetterProgress>) };
+      } else {
+        byCard[id] = defaultLetterProgress();
+      }
+    }
+    return { schemaVersion: 5, byCard };
+  }
+
+  // v4 → v5: mastered cards promoted to level 3; others carry forward
   if (
     raw !== null &&
     typeof raw === 'object' &&
@@ -489,13 +510,17 @@ export function migrateProgress(raw: unknown): ProgressState {
     const v4 = raw as { schemaVersion: 4; byCard: Record<string, unknown> };
     const byCard: ProgressByCard = {};
     for (const [id, entry] of Object.entries(v4.byCard ?? {})) {
-      if (entry !== null && typeof entry === 'object') {
-        byCard[id] = { ...defaultLetterProgress(), ...(entry as Partial<LetterProgress>) };
-      } else {
-        byCard[id] = defaultLetterProgress();
+      const base: LetterProgress =
+        entry !== null && typeof entry === 'object'
+          ? { ...defaultLetterProgress(), ...(entry as Partial<LetterProgress>) }
+          : defaultLetterProgress();
+      if (base.mastered) {
+        base.level = SESSION_MASTERY_LEVEL;
+        base.levelCorrect = 0;
       }
+      byCard[id] = base;
     }
-    return { schemaVersion: 4, byCard };
+    return { schemaVersion: 5, byCard };
   }
 
   // v3 → v4
@@ -521,10 +546,10 @@ export function migrateProgress(raw: unknown): ProgressState {
     for (const [id, old] of Object.entries(v3.byCard)) {
       byCard[id] = migrateOldCard(old);
     }
-    return { schemaVersion: 4, byCard };
+    return { schemaVersion: 5, byCard };
   }
 
-  // v2 → v4
+  // v2 → v5
   if (
     raw !== null &&
     typeof raw === 'object' &&
@@ -546,12 +571,12 @@ export function migrateProgress(raw: unknown): ProgressState {
     for (const [id, old] of Object.entries(v2.byCard)) {
       byCard[id] = migrateOldCard(old);
     }
-    return { schemaVersion: 4, byCard };
+    return { schemaVersion: 5, byCard };
   }
 
   // null / undefined / empty
   if (raw === null || raw === undefined || typeof raw !== 'object') {
-    return { schemaVersion: 4, byCard: {} };
+    return { schemaVersion: 5, byCard: {} };
   }
 
   // v1 (legacy flat object — no schemaVersion)
@@ -571,7 +596,7 @@ export function migrateProgress(raw: unknown): ProgressState {
     };
     byCard[id] = migrateOldCard(old);
   }
-  return { schemaVersion: 4, byCard };
+  return { schemaVersion: 5, byCard };
 }
 
 type OldCardShape = {
@@ -595,13 +620,13 @@ function migrateOldCard(old: OldCardShape): LetterProgress {
   if (old.mastered === true) {
     level = SESSION_MASTERY_LEVEL;
     levelCorrect = 0;
-  } else if (correctCount >= CORRECT_PER_LEVEL) {
+  } else if (correctCount >= PHASE_THRESHOLDS[0]) {
     // Old warmup done, was in streak phase
     level = 1;
-    levelCorrect = Math.min(streak, CORRECT_PER_LEVEL - 1);
+    levelCorrect = Math.min(streak, PHASE_THRESHOLDS[1] - 1);
   } else {
     level = 0;
-    levelCorrect = Math.min(correctCount, CORRECT_PER_LEVEL - 1);
+    levelCorrect = Math.min(correctCount, PHASE_THRESHOLDS[0] - 1);
   }
 
   return {

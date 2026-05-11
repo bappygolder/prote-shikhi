@@ -36,7 +36,9 @@ import {
   migrateProgress,
   resetCards,
   tickCycle,
-  CORRECT_PER_LEVEL,
+  PHASE_THRESHOLDS,
+  PHASE_CUMULATIVE,
+  TOTAL_CORRECT_TO_MASTER,
   SESSION_MASTERY_LEVEL,
   type ProgressByCard,
   type ProgressState,
@@ -140,9 +142,16 @@ function formatBanglaDate(isoString: string | null): string {
 
 function getMasteryPercent(progress: ProgressByCard, cardId: string) {
   const p = getProgressForCard(progress, cardId);
-  const earned = p.level * CORRECT_PER_LEVEL + p.levelCorrect;
-  const max = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL;
-  return Math.min(100, Math.round((earned / max) * 100));
+  const earned = (PHASE_CUMULATIVE[p.level] ?? TOTAL_CORRECT_TO_MASTER) + p.levelCorrect;
+  return Math.min(100, Math.round((earned / TOTAL_CORRECT_TO_MASTER) * 100));
+}
+
+function getCorrectOutOf20(progress: ProgressByCard, cardId: string): number {
+  const p = getProgressForCard(progress, cardId);
+  return Math.min(
+    (PHASE_CUMULATIVE[p.level] ?? TOTAL_CORRECT_TO_MASTER) + p.levelCorrect,
+    TOTAL_CORRECT_TO_MASTER,
+  );
 }
 
 function getDisplayLetter(card: LetterCard) {
@@ -190,21 +199,25 @@ function getEffectivePracticeCards(
   return listCards.length > 0 ? listCards : unlockedCards;
 }
 
-function LevelDots({ level, levelCorrect }: { level: number; levelCorrect: number }) {
-  const LEVEL_COLORS = ['#9ca3af', '#60a5fa', '#a78bfa', '#34d399']; // gray, blue, purple, green
-  const color = LEVEL_COLORS[Math.min(level, LEVEL_COLORS.length - 1)] ?? '#9ca3af';
+// Milestone dots — one per phase, permanently colored once a phase is completed.
+// Positioned absolute top-left of the flashcard like traffic lights.
+function LevelDots({ level }: { level: number }) {
+  const PHASE_COLORS = ['#60a5fa', '#a78bfa', '#34d399']; // blue, purple, green
 
   return (
     <View style={levelDotsStyles.row}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            levelDotsStyles.pip,
-            { backgroundColor: i < levelCorrect ? color : 'transparent', borderColor: color },
-          ]}
-        />
-      ))}
+      {PHASE_COLORS.map((color, i) => {
+        const earned = level > i;
+        return (
+          <View
+            key={i}
+            style={[
+              levelDotsStyles.pip,
+              { backgroundColor: earned ? color : 'transparent', borderColor: color },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -212,15 +225,16 @@ function LevelDots({ level, levelCorrect }: { level: number; levelCorrect: numbe
 const levelDotsStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
+    position: 'absolute',
+    top: 12,
+    left: 12,
   },
   pip: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 1.5,
   },
 });
@@ -422,6 +436,133 @@ function UniverseHeatmap({ cards, progress, onTapCard }: UniverseHeatmapProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// VictoryScreen
+// ---------------------------------------------------------------------------
+
+const CONFETTI_COLORS = ['#f59e0b', '#60a5fa', '#a78bfa', '#34d399', '#f87171', '#fb923c'];
+const CONFETTI_COUNT = 20;
+
+function VictoryScreen({ onContinue, onLearningPaths }: { onContinue: () => void; onLearningPaths: () => void }) {
+  const particles = useRef(
+    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+      x: Math.floor(Math.random() * 90) + 5,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      size: 7 + Math.floor(Math.random() * 7),
+      delay: Math.floor(Math.random() * 600),
+      duration: 1800 + Math.floor(Math.random() * 1000),
+      y: new Animated.Value(-40),
+      opacity: new Animated.Value(1),
+    })),
+  ).current;
+
+  useEffect(() => {
+    const anims = particles.map((p) =>
+      Animated.parallel([
+        Animated.timing(p.y, {
+          toValue: 820,
+          duration: p.duration,
+          delay: p.delay,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.delay(p.delay + p.duration - 500),
+          Animated.timing(p.opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    Animated.parallel(anims).start();
+  }, [particles]);
+
+  return (
+    <View style={victoryStyles.overlay}>
+      {particles.map((p, i) => (
+        <Animated.View
+          key={i}
+          pointerEvents="none"
+          style={[
+            victoryStyles.particle,
+            {
+              left: `${p.x}%` as unknown as number,
+              width: p.size,
+              height: p.size,
+              borderRadius: p.size / 2,
+              backgroundColor: p.color,
+              transform: [{ translateY: p.y }],
+              opacity: p.opacity,
+            },
+          ]}
+        />
+      ))}
+      <View style={victoryStyles.card}>
+        <Text style={victoryStyles.emoji}>🎉</Text>
+        <Text style={victoryStyles.title}>এই সেট শেষ!</Text>
+        <Text style={victoryStyles.subtitle}>সব অক্ষর শেখা হয়েছে</Text>
+        <Pressable
+          style={({ pressed }) => [victoryStyles.primaryBtn, pressed && { opacity: 0.85 }]}
+          onPress={onContinue}
+        >
+          <Text style={victoryStyles.primaryBtnText}>আরও অনুশীলন</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [victoryStyles.secondaryBtn, pressed && { opacity: 0.7 }]}
+          onPress={onLearningPaths}
+        >
+          <Text style={victoryStyles.secondaryBtnText}>শেখার পথ</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const victoryStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,252,245,0.97)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  particle: {
+    position: 'absolute',
+    top: 0,
+  },
+  card: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 40,
+  },
+  emoji: { fontSize: 56, marginBottom: 12 },
+  title: { fontSize: 28, fontWeight: '700', color: '#1e293b', marginBottom: 8, textAlign: 'center' },
+  subtitle: { fontSize: 15, color: '#64748b', marginBottom: 40, textAlign: 'center' },
+  primaryBtn: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 40,
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 14,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  secondaryBtn: {
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 16,
+    minWidth: 220,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+  },
+  secondaryBtnText: { color: '#475569', fontSize: 15, fontWeight: '500' },
+});
+
+// ---------------------------------------------------------------------------
+
 function App() {
   const { isDark, preference, setPreference, styles } = useTheme();
   const [progress, setProgress] = useState<ProgressByCard>({});
@@ -440,6 +581,7 @@ function App() {
     useState<PracticeListId>('unlocked');
   const [gradeFeedback, setGradeFeedback] = useState<GradeFeedback>(null);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [isSetComplete, setIsSetComplete] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [heatmapVisible, setHeatmapVisible] = useState(true);
   const [pathView, setPathView] = useState<PathView>('flat');
@@ -548,7 +690,7 @@ function App() {
 
     // Debounce writes so a flurry of grade taps coalesces into one save.
     const timer = setTimeout(() => {
-      const toPersist: ProgressState = { schemaVersion: 4, byCard: progress };
+      const toPersist: ProgressState = { schemaVersion: 5, byCard: progress };
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist)).catch(() => {
         // Keep the trainer responsive even if storage fails.
       });
@@ -849,7 +991,7 @@ function App() {
 
     // Path complete detection
     if (isPresetComplete(selectedPresetCards, gradedProgress) && !wasPathCompleteBefore) {
-      console.log('[porashikhi] path complete:', selectedPreset.id);
+      setIsSetComplete(true);
     }
 
     playFeedback(wasCorrect);
@@ -1074,6 +1216,7 @@ function App() {
             </View>
 
             <Animated.View style={[styles.card, cardAnimatedStyle]}>
+              <LevelDots level={currentProgress.level} />
               <Animated.View
                 pointerEvents="none"
                 style={[
@@ -1109,17 +1252,13 @@ function App() {
                 >
                   {currentDisplayLetter}
                 </Text>
-                <LevelDots
-                  level={currentProgress.level}
-                  levelCorrect={currentProgress.levelCorrect}
-                />
               </View>
               <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
                 <LetterProgressMark
-                  completed={currentMasteryPercent}
+                  completed={currentProgress.levelCorrect}
                   letter={currentDisplayLetter}
-                  percent={currentMasteryPercent}
-                  total={100}
+                  percent={Math.round((currentProgress.levelCorrect / (PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1])) * 100)}
+                  total={PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1]}
                 />
               </View>
               {gradeFeedback ? (
@@ -1235,10 +1374,10 @@ function App() {
               style={styles.letterGridScroll}
             >
               {selectedPresetCards.map((card) => {
-                const masteryPercent = getMasteryPercent(progress, card.id);
+                const correctOut20 = getCorrectOutOf20(progress, card.id);
                 const isCurrentCard = currentCard.id === card.id;
-                const isMastered = masteryPercent >= 100;
-                const hasProgress = masteryPercent > 0 && !isMastered;
+                const isMastered = getProgressForCard(progress, card.id).mastered;
+                const hasProgress = correctOut20 > 0 && !isMastered;
                 const displayLetter = getDisplayLetter(card);
 
                 return (
@@ -1267,7 +1406,7 @@ function App() {
                       styles.letterPercent,
                       isMastered ? styles.letterPercentMastered : !hasProgress ? styles.letterPercentUntouched : undefined,
                     ]}>
-                      {toBanglaNumber(masteryPercent)}%
+                      {toBanglaNumber(correctOut20)}/২০
                     </Text>
                   </Pressable>
                 );
@@ -1639,6 +1778,15 @@ function App() {
         onReset={handleResetFromDetail}
         onNavigate={handleShowPresetDetail}
       />
+      {isSetComplete ? (
+        <VictoryScreen
+          onContinue={() => setIsSetComplete(false)}
+          onLearningPaths={() => {
+            setIsSetComplete(false);
+            setCurrentTab('path');
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
