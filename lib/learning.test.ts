@@ -330,6 +330,65 @@ test('buildCycleQueue: no rotation when first card differs from previousCardId',
 });
 
 // ---------------------------------------------------------------------------
+// buildCycleQueue — end-of-stack refresher
+// ---------------------------------------------------------------------------
+
+test('buildCycleQueue: graduated cards appear as refreshers when waitingPool empty and graduatedPool non-empty', () => {
+  const spaces = ['card-1']; // 1 unmastered card in spaces
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 0 },       // 3 slots
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: SESSION_MASTERY_LEVEL, mastered: true }, // refresher: 1 slot
+    'card-3': { ...getProgressForCard({}, 'card-3'), level: SESSION_MASTERY_LEVEL, mastered: true }, // refresher: 1 slot
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1), {
+    graduatedPool: ['card-2', 'card-3'],
+    waitingPool: [],
+  });
+  // card-1: 3 slots, card-2: 1 slot, card-3: 1 slot → total 5
+  assert.equal(queue.length, 5);
+  assert.equal(queue.filter(id => id === 'card-1').length, 3);
+  assert.equal(queue.filter(id => id === 'card-2').length, 1);
+  assert.equal(queue.filter(id => id === 'card-3').length, 1);
+});
+
+test('buildCycleQueue: no refreshers when waitingPool is non-empty', () => {
+  const spaces = ['card-1'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 0 },
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: SESSION_MASTERY_LEVEL, mastered: true },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1), {
+    graduatedPool: ['card-2'],
+    waitingPool: ['card-3'], // non-empty — no refresher mode
+  });
+  // card-1: 3 slots only — card-2 is NOT included
+  assert.equal(queue.length, 3);
+  assert.ok(!queue.includes('card-2'));
+});
+
+test('buildCycleQueue: both graduated refreshers included regardless of error rate difference', () => {
+  const spaces = ['card-1'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 2 }, // 1 slot
+    // card-A: low error rate (10 seen, 1 wrong → 1/11 ≈ 0.09)
+    'card-A': { ...getProgressForCard({}, 'card-A'), level: SESSION_MASTERY_LEVEL, mastered: true, seenCount: 10, wrongCount: 1 },
+    // card-B: high error rate (10 seen, 5 wrong → 5/11 ≈ 0.45)
+    'card-B': { ...getProgressForCard({}, 'card-B'), level: SESSION_MASTERY_LEVEL, mastered: true, seenCount: 10, wrongCount: 5 },
+  };
+  // Both refreshers must appear in every run regardless of seed
+  for (let seed = 0; seed < 20; seed++) {
+    const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(seed), {
+      graduatedPool: ['card-A', 'card-B'],
+      waitingPool: [],
+    });
+    // card-1: 1 slot, card-A: 1 slot, card-B: 1 slot → total 3
+    assert.equal(queue.length, 3, `seed ${seed}: expected length 3`);
+    assert.ok(queue.includes('card-A'), `seed ${seed}: card-A missing`);
+    assert.ok(queue.includes('card-B'), `seed ${seed}: card-B missing`);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // tickCycle — space lifecycle
 // ---------------------------------------------------------------------------
 
