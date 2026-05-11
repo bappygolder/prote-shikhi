@@ -82,6 +82,16 @@ This project uses the shared AI collaboration system. Framework docs live at `~/
 
 ---
 
+## PROJECT SKILLS
+
+These skills apply to every session in this project. Load them when the trigger applies.
+
+| Skill | Trigger | File |
+|---|---|---|
+| `bornomala-version-bump` | Before every commit containing a feature, fix, or visible change | `~/.claude/skills/bornomala-version-bump/SKILL.md` |
+
+---
+
 ## KEY DOCS
 
 | Doc | When to read |
