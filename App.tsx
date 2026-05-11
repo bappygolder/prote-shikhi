@@ -25,7 +25,7 @@ import {
   type PracticePreset,
 } from './data/banglaLetters';
 import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
-import { PresetPath } from './components/path';
+import { FlatPath, PathSwitcher, PresetPath, type PathView } from './components/path';
 import {
   applyActiveSetOnCorrect,
   applyActiveSetOnMastery,
@@ -55,6 +55,7 @@ import {
 const STORAGE_KEY = 'porashikhi.progress.v1';
 const LAST_TAB_STORAGE_KEY = 'porashikhi.lastTab.v1';
 const HEATMAP_VISIBLE_KEY = 'porashikhi.ui.heatmap.visible.v1';
+const PATH_VIEW_STORAGE_KEY = 'porashikhi.ui.pathView.v1';
 const SELECTED_PRESET_STORAGE_KEY = 'porashikhi.selectedPreset.v1';
 const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
 const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
@@ -386,6 +387,7 @@ function App() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [heatmapVisible, setHeatmapVisible] = useState(true);
+  const [pathView, setPathView] = useState<PathView>('zigzag');
   const [statsModalCard, setStatsModalCard] = useState<LetterCard | null>(null);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
@@ -402,8 +404,9 @@ function App() {
       AsyncStorage.getItem(LEGACY_LAST_TAB_STORAGE_KEY),
       AsyncStorage.getItem(HEATMAP_VISIBLE_KEY),
       AsyncStorage.getItem(SELECTED_PRESET_STORAGE_KEY),
+      AsyncStorage.getItem(PATH_VIEW_STORAGE_KEY),
     ])
-      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId, savedPathView]) => {
         if (!isMounted) {
           return;
         }
@@ -449,6 +452,10 @@ function App() {
 
         if (savedHeatmap !== null) {
           setHeatmapVisible(savedHeatmap !== 'false');
+        }
+
+        if (savedPathView === 'zigzag' || savedPathView === 'flat') {
+          setPathView(savedPathView);
         }
       })
       .catch(() => {
@@ -939,6 +946,11 @@ function App() {
     setCurrentCardId(nextCards[0]?.id ?? selectedPresetCards[0].id);
   }
 
+  function handleSetPathView(view: PathView) {
+    setPathView(view);
+    AsyncStorage.setItem(PATH_VIEW_STORAGE_KEY, view).catch(() => {});
+  }
+
   function handleSelectPreset(presetId: string) {
     const preset =
       PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
@@ -1018,18 +1030,29 @@ function App() {
                 onTapCard={handleChooseLetter}
               />
             ) : null}
+            <PathSwitcher value={pathView} onChange={handleSetPathView} />
             <ScrollView
               contentContainerStyle={styles.pathScrollContent}
               showsVerticalScrollIndicator={false}
               style={styles.pathScroll}
             >
-              <PresetPath
-                presets={PRACTICE_PRESETS}
-                progress={progress}
-                currentPresetId={currentPathPresetId}
-                onSelect={handleSelectPreset}
-                onLongPressReset={handleResetPreset}
-              />
+              {pathView === 'zigzag' ? (
+                <PresetPath
+                  presets={PRACTICE_PRESETS}
+                  progress={progress}
+                  currentPresetId={currentPathPresetId}
+                  onSelect={handleSelectPreset}
+                  onLongPressReset={handleResetPreset}
+                />
+              ) : (
+                <FlatPath
+                  presets={PRACTICE_PRESETS}
+                  progress={progress}
+                  currentPresetId={currentPathPresetId}
+                  onSelect={handleSelectPreset}
+                  onLongPressReset={handleResetPreset}
+                />
+              )}
             </ScrollView>
           </View>
         ) : currentTab === 'practice' ? (
