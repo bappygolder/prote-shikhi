@@ -242,11 +242,8 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
           />
         ))}
       </View>
-      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.progressPercent}>
-        {toBanglaNumber(displayPercent)}%
-      </Text>
       <Text adjustsFontSizeToFit numberOfLines={1} style={styles.progressValue}>
-        {toBanglaNumber(clampedCompleted)}/{toBanglaNumber(total)}
+        {toBanglaNumber(displayPercent)}% · {toBanglaNumber(clampedCompleted)}/{toBanglaNumber(total)}
       </Text>
     </View>
   );
