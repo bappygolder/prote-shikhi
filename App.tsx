@@ -190,6 +190,41 @@ function getEffectivePracticeCards(
   return listCards.length > 0 ? listCards : unlockedCards;
 }
 
+function LevelDots({ level, levelCorrect }: { level: number; levelCorrect: number }) {
+  const LEVEL_COLORS = ['#9ca3af', '#60a5fa', '#a78bfa', '#34d399']; // gray, blue, purple, green
+  const color = LEVEL_COLORS[Math.min(level, LEVEL_COLORS.length - 1)] ?? '#9ca3af';
+
+  return (
+    <View style={levelDotsStyles.row}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <View
+          key={i}
+          style={[
+            levelDotsStyles.pip,
+            { backgroundColor: i < levelCorrect ? color : 'transparent', borderColor: color },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+const levelDotsStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  pip: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
+});
+
 function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
   const { styles } = useTheme();
   const clampedPercent = Math.max(0, Math.min(100, percent));
@@ -1074,6 +1109,10 @@ function App() {
                 >
                   {currentDisplayLetter}
                 </Text>
+                <LevelDots
+                  level={currentProgress.level}
+                  levelCorrect={currentProgress.levelCorrect}
+                />
               </View>
               <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
                 <LetterProgressMark
