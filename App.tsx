@@ -25,6 +25,7 @@ import {
   type PracticePreset,
 } from './data/banglaLetters';
 import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
+import { PresetPath } from './components/path';
 import {
   applyActiveSetOnCorrect,
   applyActiveSetOnMastery,
@@ -361,112 +362,6 @@ function UniverseHeatmap({ cards, progress, onTapCard }: UniverseHeatmapProps) {
           );
         })}
       </View>
-    </View>
-  );
-}
-
-type PresetNodeState = 'locked' | 'started' | 'mastered' | 'current';
-
-type PresetPathProps = {
-  presets: PracticePreset[];
-  progress: ProgressByCard;
-  currentPresetId: string | null;
-  onSelect: (presetId: string) => void;
-  onLongPressReset: (preset: PracticePreset) => void;
-};
-
-function PresetPath({
-  presets,
-  progress,
-  currentPresetId,
-  onSelect,
-  onLongPressReset,
-}: PresetPathProps) {
-  const { styles } = useTheme();
-  return (
-    <View style={styles.pathColumn}>
-      {presets.map((preset, index) => {
-        const masteredCount = preset.cards.filter(
-          (card) => getProgressForCard(progress, card.id).mastered,
-        ).length;
-        const totalCount = preset.cards.length;
-        const isMastered = masteredCount === totalCount && totalCount > 0;
-        const isCurrent = preset.id === currentPresetId;
-        const hasStarted = !isMastered && masteredCount > 0;
-        const state: PresetNodeState = isCurrent
-          ? 'current'
-          : isMastered
-            ? 'mastered'
-            : hasStarted
-              ? 'started'
-              : 'locked';
-
-        // Zigzag offset: even rows lean right, odd rows lean left.
-        const sideStyle = index % 2 === 0 ? styles.pathRowLeft : styles.pathRowRight;
-
-        return (
-          <View key={preset.id} style={[styles.pathRow, sideStyle]}>
-            <Pressable
-              accessibilityLabel={`${preset.label} প্রিসেট`}
-              delayLongPress={420}
-              onLongPress={() => onLongPressReset(preset)}
-              onPress={() => onSelect(preset.id)}
-              style={({ pressed }) => [
-                styles.pathNode,
-                state === 'started' && styles.pathNodeStarted,
-                state === 'mastered' && styles.pathNodeMastered,
-                state === 'current' && styles.pathNodeCurrent,
-                state === 'locked' && styles.pathNodeLocked,
-                pressed && styles.tilePressed,
-              ]}
-            >
-              {state === 'mastered' ? (
-                <Text style={styles.pathNodeTick}>✓</Text>
-              ) : (
-                <Text
-                  style={[
-                    styles.pathNodeGlyph,
-                    state === 'current' && styles.pathNodeGlyphCurrent,
-                    state === 'locked' && styles.pathNodeGlyphLocked,
-                  ]}
-                >
-                  {preset.cards[0]?.letter ?? '·'}
-                </Text>
-              )}
-            </Pressable>
-            <View style={styles.pathLabelBlock}>
-              <Text
-                style={[
-                  styles.pathLabel,
-                  state === 'locked' && styles.pathLabelLocked,
-                ]}
-              >
-                {preset.label}
-              </Text>
-              <Text
-                style={[
-                  styles.pathCount,
-                  state === 'locked' && styles.pathCountLocked,
-                ]}
-              >
-                {toBanglaNumber(masteredCount)}/{toBanglaNumber(totalCount)}
-              </Text>
-              {state === 'current' ? (
-                <Pressable
-                  accessibilityLabel={`${preset.label} শুরু করুন`}
-                  onPress={() => onSelect(preset.id)}
-                  style={({ pressed }) => [
-                    styles.startPill,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Text style={styles.startPillText}>শুরু</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        );
-      })}
     </View>
   );
 }
