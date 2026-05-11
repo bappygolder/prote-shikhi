@@ -20,11 +20,12 @@ import {
 import {
   LETTER_CARDS,
   PRACTICE_PRESETS,
+  type CustomPreset,
   type LetterCard,
   type PracticePreset,
 } from './data/banglaLetters';
 import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
-import { FlatPath, PathSwitcher, PresetDetailModal, PresetPath, type PathView } from './components/path';
+import { CustomPath, CustomPresetCreator, FlatPath, PathSwitcher, PresetDetailModal, PresetPath, type PathView } from './components/path';
 import {
   applyGrade,
   chooseNextCard,
@@ -51,6 +52,7 @@ const HEATMAP_VISIBLE_KEY = 'porashikhi.ui.heatmap.visible.v1';
 const PATH_VIEW_STORAGE_KEY = 'porashikhi.ui.pathView.v1';
 const SELECTED_PRESET_STORAGE_KEY = 'porashikhi.selectedPreset.v1';
 const PRESET_RESETS_KEY = 'porashikhi.presetResets.v1';
+const CUSTOM_PRESETS_STORAGE_KEY = 'porashikhi.customPresets.v1';
 const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
 const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -227,9 +229,8 @@ const levelDotsStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
-    position: 'absolute',
-    top: 12,
-    left: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
   },
   pip: {
     width: 12,
@@ -588,6 +589,8 @@ function App() {
   const [statsModalCard, setStatsModalCard] = useState<LetterCard | null>(null);
   const [detailPreset, setDetailPreset] = useState<PracticePreset | null>(null);
   const [presetResetCounts, setPresetResetCounts] = useState<Record<string, number>>({});
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+  const [showCreator, setShowCreator] = useState(false);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -605,8 +608,9 @@ function App() {
       AsyncStorage.getItem(SELECTED_PRESET_STORAGE_KEY),
       AsyncStorage.getItem(PATH_VIEW_STORAGE_KEY),
       AsyncStorage.getItem(PRESET_RESETS_KEY),
+      AsyncStorage.getItem(CUSTOM_PRESETS_STORAGE_KEY),
     ])
-      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId, savedPathView, savedPresetResets]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId, savedPathView, savedPresetResets, savedCustomPresets]) => {
         if (!isMounted) {
           return;
         }
@@ -654,7 +658,7 @@ function App() {
           setHeatmapVisible(savedHeatmap !== 'false');
         }
 
-        if (savedPathView === 'zigzag' || savedPathView === 'flat') {
+        if (savedPathView === 'zigzag' || savedPathView === 'flat' || savedPathView === 'custom') {
           setPathView(savedPathView);
         }
 
@@ -663,6 +667,17 @@ function App() {
             const parsed = JSON.parse(savedPresetResets);
             if (parsed && typeof parsed === 'object') {
               setPresetResetCounts(parsed as Record<string, number>);
+            }
+          } catch {
+            // ignore malformed data
+          }
+        }
+
+        if (savedCustomPresets) {
+          try {
+            const parsed = JSON.parse(savedCustomPresets);
+            if (Array.isArray(parsed)) {
+              setCustomPresets(parsed as CustomPreset[]);
             }
           } catch {
             // ignore malformed data
@@ -710,6 +725,13 @@ function App() {
       // Tab persistence is a nice-to-have; ignore failures.
     });
   }, [currentTab, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+    AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(customPresets)).catch(() => {});
+  }, [customPresets, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -817,6 +839,8 @@ function App() {
     PRACTICE_PRESETS.find(
       (preset) => !isPresetComplete(preset.cards, progress),
     )?.id ?? null;
+  const currentCustomPathPresetId =
+    customPresets.find((preset) => !isPresetComplete(preset.cards, progress))?.id ?? null;
   const practiceListCounts: Record<PracticeListId, number> = {
     unlocked: unlockedCards.length,
     all: selectedPresetCards.length,
@@ -1099,8 +1123,9 @@ function App() {
   }
 
   function handleSelectPreset(presetId: string) {
-    const preset =
+    const preset: PracticePreset =
       PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
+      customPresets.find((p) => p.id === presetId) ??
       DEFAULT_PRESET;
     const nextUnlockedCards = getUnlockedCards(preset.cards, progress);
     const nextCards = getEffectivePracticeCards(
@@ -1115,6 +1140,15 @@ function App() {
     setCurrentCardId(nextCards[0]?.id ?? preset.cards[0].id);
     setCurrentTab('practice');
     handleCloseMenu();
+  }
+
+  function handleSaveCustomPreset(preset: CustomPreset) {
+    setCustomPresets((prev) => [...prev, preset]);
+    setShowCreator(false);
+  }
+
+  function handleDeleteCustomPreset(presetId: string) {
+    setCustomPresets((prev) => prev.filter((p) => p.id !== presetId));
   }
 
   function handleChooseLetter(card: LetterCard) {
@@ -1192,7 +1226,7 @@ function App() {
                   onSelect={handleSelectPreset}
                   onLongPressReset={handleResetPreset}
                 />
-              ) : (
+              ) : pathView === 'flat' ? (
                 <FlatPath
                   presets={PRACTICE_PRESETS}
                   progress={progress}
@@ -1200,6 +1234,15 @@ function App() {
                   onDetail={handleShowPresetDetail}
                   onSelect={handleSelectPreset}
                   onLongPressReset={handleResetPreset}
+                />
+              ) : (
+                <CustomPath
+                  presets={customPresets}
+                  progress={progress}
+                  currentPresetId={currentCustomPathPresetId}
+                  onSelect={handleSelectPreset}
+                  onCreate={() => setShowCreator(true)}
+                  onDelete={handleDeleteCustomPreset}
                 />
               )}
             </ScrollView>
@@ -1216,7 +1259,6 @@ function App() {
             </View>
 
             <Animated.View style={[styles.card, cardAnimatedStyle]}>
-              <LevelDots level={currentProgress.level} />
               <Animated.View
                 pointerEvents="none"
                 style={[
@@ -1254,6 +1296,7 @@ function App() {
                 </Text>
               </View>
               <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
+                <LevelDots level={currentProgress.level} />
                 <LetterProgressMark
                   completed={currentProgress.levelCorrect}
                   letter={currentDisplayLetter}
@@ -1777,6 +1820,11 @@ function App() {
         onPractice={handlePracticeFromDetail}
         onReset={handleResetFromDetail}
         onNavigate={handleShowPresetDetail}
+      />
+      <CustomPresetCreator
+        visible={showCreator}
+        onClose={() => setShowCreator(false)}
+        onSave={handleSaveCustomPreset}
       />
       {isSetComplete ? (
         <VictoryScreen
