@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import DraggableFlatList, {
+  ScaleDecorator,
+  type RenderItemParams,
+} from 'react-native-draggable-flatlist';
 import {
   Modal,
   Pressable,
@@ -24,7 +28,9 @@ export type CustomPresetCreatorProps = {
   onSave: (preset: CustomPreset) => void;
 };
 
-type WordChip = { id: string; word: string };
+type OrderedCard =
+  | { type: 'letter'; card: LetterCard }
+  | { type: 'word'; id: string; word: string };
 
 const LETTER_SECTIONS: { label: string; cards: LetterCard[] }[] = [
   { label: 'স্বর', cards: VOWEL_CARDS },
@@ -35,15 +41,13 @@ const LETTER_SECTIONS: { label: string; cards: LetterCard[] }[] = [
 
 export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCreatorProps) {
   const [name, setName] = useState('');
-  const [selectedLetterIds, setSelectedLetterIds] = useState<Set<string>>(new Set());
+  const [orderedCards, setOrderedCards] = useState<OrderedCard[]>([]);
   const [wordInput, setWordInput] = useState('');
-  const [wordChips, setWordChips] = useState<WordChip[]>([]);
 
   function reset() {
     setName('');
-    setSelectedLetterIds(new Set());
+    setOrderedCards([]);
     setWordInput('');
-    setWordChips([]);
   }
 
   function handleClose() {
@@ -51,56 +55,50 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
     onClose();
   }
 
-  function toggleLetter(cardId: string) {
-    setSelectedLetterIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardId)) {
-        next.delete(cardId);
-      } else {
-        next.add(cardId);
-      }
-      return next;
+  function toggleLetter(card: LetterCard) {
+    setOrderedCards((prev) => {
+      const exists = prev.some((c) => c.type === 'letter' && c.card.id === card.id);
+      if (exists) return prev.filter((c) => !(c.type === 'letter' && c.card.id === card.id));
+      return [...prev, { type: 'letter' as const, card }];
     });
   }
 
   function handleAddWord() {
     const trimmed = wordInput.trim();
     if (!trimmed) return;
-    setWordChips((prev) => [
-      ...prev,
-      { id: `word-${Date.now()}-${prev.length}`, word: trimmed },
-    ]);
+    const id = `word-${Date.now()}-${orderedCards.length}`;
+    setOrderedCards((prev) => [...prev, { type: 'word' as const, id, word: trimmed }]);
     setWordInput('');
   }
 
-  function handleRemoveWord(id: string) {
-    setWordChips((prev) => prev.filter((chip) => chip.id !== id));
+  function removeCard(item: OrderedCard) {
+    setOrderedCards((prev) => {
+      if (item.type === 'letter') {
+        return prev.filter((c) => !(c.type === 'letter' && c.card.id === item.card.id));
+      }
+      return prev.filter((c) => !(c.type === 'word' && c.id === item.id));
+    });
+  }
+
+  function buildCards(cards: OrderedCard[]): LetterCard[] {
+    return cards.map((item, i) => {
+      if (item.type === 'letter') return item.card;
+      return { id: item.id, letter: item.word, group: 'word' as const, order: 1000 + i };
+    });
   }
 
   function handleSave() {
-    const selectedLetters = LETTER_SECTIONS.flatMap((s) =>
-      s.cards.filter((c) => selectedLetterIds.has(c.id)),
-    );
-    const wordCards: LetterCard[] = wordChips.map((chip, i) => ({
-      id: chip.id,
-      letter: chip.word,
-      group: 'word',
-      order: 1000 + i,
-    }));
-
-    const preset: CustomPreset = {
+    const newPreset: CustomPreset = {
       id: `custom-${Date.now()}`,
       label: name.trim(),
-      cards: [...selectedLetters, ...wordCards],
+      cards: buildCards(orderedCards),
       createdAt: new Date().toISOString(),
     };
-
-    onSave(preset);
+    onSave(newPreset);
     reset();
   }
 
-  const totalSelected = selectedLetterIds.size + wordChips.length;
-  const canSave = name.trim().length > 0 && totalSelected > 0;
+  const canSave = name.trim().length > 0 && orderedCards.length > 0;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
@@ -155,8 +153,10 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
           <View style={creatorStyles.section}>
             <Text style={creatorStyles.sectionLabel}>
               অক্ষর বাছুন
-              {selectedLetterIds.size > 0 ? (
-                <Text style={creatorStyles.sectionCount}> · {selectedLetterIds.size}টি বাছা হয়েছে</Text>
+              {orderedCards.filter((c) => c.type === 'letter').length > 0 ? (
+                <Text style={creatorStyles.sectionCount}>
+                  {' '}· {orderedCards.filter((c) => c.type === 'letter').length}টি বাছা হয়েছে
+                </Text>
               ) : null}
             </Text>
             {LETTER_SECTIONS.map((section) => (
@@ -164,14 +164,16 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
                 <Text style={creatorStyles.letterGroupLabel}>{section.label}</Text>
                 <View style={creatorStyles.letterGrid}>
                   {section.cards.map((card) => {
-                    const selected = selectedLetterIds.has(card.id);
+                    const selected = orderedCards.some(
+                      (c) => c.type === 'letter' && c.card.id === card.id,
+                    );
                     const display = card.group === 'vowelSign' ? `◌${card.letter}` : card.letter;
                     return (
                       <Pressable
                         key={card.id}
                         accessibilityLabel={`${display} অক্ষর`}
                         accessibilityState={{ selected }}
-                        onPress={() => toggleLetter(card.id)}
+                        onPress={() => toggleLetter(card)}
                         style={({ pressed }) => [
                           creatorStyles.letterCell,
                           selected && creatorStyles.letterCellSelected,
@@ -229,19 +231,39 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
                 </Text>
               </Pressable>
             </View>
-            {wordChips.length > 0 ? (
-              <View style={creatorStyles.chipRow}>
-                {wordChips.map((chip) => (
-                  <Pressable
-                    key={chip.id}
-                    accessibilityLabel={`${chip.word} সরান`}
-                    onPress={() => handleRemoveWord(chip.id)}
-                    style={({ pressed }) => [creatorStyles.chip, pressed && creatorStyles.chipPressed]}
-                  >
-                    <Text style={creatorStyles.chipText}>{chip.word}</Text>
-                    <Text style={creatorStyles.chipRemove}> ✕</Text>
-                  </Pressable>
-                ))}
+            {orderedCards.length > 0 ? (
+              <View style={creatorStyles.cardList}>
+                <Text style={creatorStyles.sectionLabel}>কার্ডের ক্রম</Text>
+                <DraggableFlatList
+                  data={orderedCards}
+                  keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
+                  onDragEnd={({ data }) => setOrderedCards(data)}
+                  renderItem={({ item, drag, isActive }: RenderItemParams<OrderedCard>) => {
+                    const label =
+                      item.type === 'letter'
+                        ? item.card.group === 'vowelSign'
+                          ? `◌${item.card.letter}`
+                          : item.card.letter
+                        : item.word;
+                    return (
+                      <ScaleDecorator>
+                        <Pressable
+                          onLongPress={drag}
+                          style={[creatorStyles.cardRow, isActive && creatorStyles.cardRowActive]}
+                        >
+                          <Text style={creatorStyles.cardRowText}>{label}</Text>
+                          <Text style={creatorStyles.dragHandle}>⠿</Text>
+                          <Pressable
+                            onPress={() => removeCard(item)}
+                            style={creatorStyles.cardRowRemove}
+                          >
+                            <Text style={creatorStyles.cardRowRemoveText}>✕</Text>
+                          </Pressable>
+                        </Pressable>
+                      </ScaleDecorator>
+                    );
+                  }}
+                />
               </View>
             ) : null}
           </View>
@@ -440,6 +462,48 @@ const creatorStyles = StyleSheet.create({
   chipRemove: {
     fontSize: 11,
     color: '#f4512a',
+    fontWeight: '700',
+  },
+
+  cardList: {
+    gap: 8,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#e5ddc7',
+  },
+  cardRowActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    backgroundColor: '#f0ece0',
+  },
+  cardRowText: {
+    flex: 1,
+    fontSize: 22,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  dragHandle: {
+    fontSize: 18,
+    color: '#9ca3af',
+    paddingHorizontal: 8,
+  },
+  cardRowRemove: {
+    padding: 4,
+  },
+  cardRowRemoveText: {
+    fontSize: 14,
+    color: '#9ca3af',
     fontWeight: '700',
   },
 });
