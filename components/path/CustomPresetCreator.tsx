@@ -5,6 +5,7 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import {
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -247,69 +248,92 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
     </>
   );
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
-      <SafeAreaView style={creatorStyles.safeArea}>
-        {/* Header */}
-        <View style={creatorStyles.header}>
+  const innerContent = (
+    <>
+      {/* Header */}
+      <View style={creatorStyles.header}>
+        <Pressable
+          accessibilityLabel="বন্ধ করুন"
+          onPress={handleClose}
+          style={({ pressed }) => [creatorStyles.headerBtn, pressed && creatorStyles.headerBtnPressed]}
+        >
+          <Text style={creatorStyles.headerBtnText}>✕</Text>
+        </Pressable>
+        <Text style={creatorStyles.headerTitle}>{preset ? 'পথ সম্পাদনা' : 'নতুন দ্রুত পথ'}</Text>
+        <Pressable
+          accessibilityLabel="সংরক্ষণ করুন"
+          disabled={!canSave}
+          onPress={handleSave}
+          style={({ pressed }) => [
+            creatorStyles.saveBtn,
+            !canSave && creatorStyles.saveBtnDisabled,
+            pressed && canSave && creatorStyles.saveBtnPressed,
+          ]}
+        >
+          <Text style={[creatorStyles.saveBtnText, !canSave && creatorStyles.saveBtnTextDisabled]}>
+            সংরক্ষণ
+          </Text>
+        </Pressable>
+      </View>
+
+      <DraggableFlatList
+        data={orderedCards}
+        keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
+        onDragEnd={({ data }) => setOrderedCards(data)}
+        renderItem={renderOrderedCard}
+        ListHeaderComponent={CreatorHeader}
+        contentContainerStyle={creatorStyles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      />
+      {onPractice ? (
+        <View style={creatorStyles.footer}>
           <Pressable
-            accessibilityLabel="বন্ধ করুন"
-            onPress={handleClose}
-            style={({ pressed }) => [creatorStyles.headerBtn, pressed && creatorStyles.headerBtnPressed]}
-          >
-            <Text style={creatorStyles.headerBtnText}>✕</Text>
-          </Pressable>
-          <Text style={creatorStyles.headerTitle}>{preset ? 'পথ সম্পাদনা' : 'নতুন দ্রুত পথ'}</Text>
-          <Pressable
-            accessibilityLabel="সংরক্ষণ করুন"
-            disabled={!canSave}
-            onPress={handleSave}
+            accessibilityLabel="অনুশীলন করুন"
+            disabled={orderedCards.length === 0}
+            onPress={handlePractice}
             style={({ pressed }) => [
-              creatorStyles.saveBtn,
-              !canSave && creatorStyles.saveBtnDisabled,
-              pressed && canSave && creatorStyles.saveBtnPressed,
+              creatorStyles.practiceBtn,
+              orderedCards.length === 0 && creatorStyles.practiceBtnDisabled,
+              pressed && orderedCards.length > 0 && creatorStyles.practiceBtnPressed,
             ]}
           >
-            <Text style={[creatorStyles.saveBtnText, !canSave && creatorStyles.saveBtnTextDisabled]}>
-              সংরক্ষণ
+            <Text
+              style={[
+                creatorStyles.practiceBtnText,
+                orderedCards.length === 0 && creatorStyles.practiceBtnTextDisabled,
+              ]}
+            >
+              অনুশীলন করুন
             </Text>
           </Pressable>
         </View>
+      ) : null}
+    </>
+  );
 
-        <DraggableFlatList
-          data={orderedCards}
-          keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
-          onDragEnd={({ data }) => setOrderedCards(data)}
-          renderItem={renderOrderedCard}
-          ListHeaderComponent={CreatorHeader}
-          contentContainerStyle={creatorStyles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        />
-        {onPractice ? (
-          <View style={creatorStyles.footer}>
-            <Pressable
-              accessibilityLabel="অনুশীলন করুন"
-              disabled={orderedCards.length === 0}
-              onPress={handlePractice}
-              style={({ pressed }) => [
-                creatorStyles.practiceBtn,
-                orderedCards.length === 0 && creatorStyles.practiceBtnDisabled,
-                pressed && orderedCards.length > 0 && creatorStyles.practiceBtnPressed,
-              ]}
-            >
-              <Text
-                style={[
-                  creatorStyles.practiceBtnText,
-                  orderedCards.length === 0 && creatorStyles.practiceBtnTextDisabled,
-                ]}
-              >
-                অনুশীলন করুন
-              </Text>
-            </Pressable>
+  return (
+    <Modal
+      visible={visible}
+      animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
+      transparent={Platform.OS === 'web'}
+      presentationStyle={Platform.OS === 'web' ? undefined : 'pageSheet'}
+      onRequestClose={handleClose}
+    >
+      {Platform.OS === 'web' ? (
+        <View style={creatorStyles.webBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+          <View style={creatorStyles.webInner}>
+            <SafeAreaView style={[creatorStyles.safeArea, creatorStyles.webSafeArea]}>
+              {innerContent}
+            </SafeAreaView>
           </View>
-        ) : null}
-      </SafeAreaView>
+        </View>
+      ) : (
+        <SafeAreaView style={creatorStyles.safeArea}>
+          {innerContent}
+        </SafeAreaView>
+      )}
     </Modal>
   );
 }
@@ -542,5 +566,28 @@ const creatorStyles = StyleSheet.create({
   },
   practiceBtnTextDisabled: {
     color: '#9ca3af',
+  },
+
+  webBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 16,
+  },
+  webInner: {
+    width: '100%',
+    maxWidth: 540,
+    maxHeight: '90%' as unknown as number,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+  },
+  webSafeArea: {
+    flex: 1,
   },
 });
