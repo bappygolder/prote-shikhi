@@ -1083,7 +1083,7 @@ function App() {
                 }}
                 style={({ pressed }) => [styles.heatmapToggle, pressed && styles.buttonPressed]}
               >
-                <Text style={styles.heatmapToggleIcon}>{heatmapVisible ? '👁️' : '👁️̸'}</Text>
+                {!heatmapVisible ? <Text style={styles.heatmapToggleIcon}>👁️</Text> : null}
                 <Text style={styles.heatmapToggleLabel}>{heatmapVisible ? 'Hide map' : 'Show map'}</Text>
               </Pressable>
             </View>
