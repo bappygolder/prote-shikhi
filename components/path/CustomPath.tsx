@@ -32,6 +32,7 @@ export type CustomPathProps = {
   onSelect: (presetId: string) => void;
   onCreate: () => void;
   onDelete: (presetId: string) => void;
+  onEdit: (preset: CustomPreset) => void;
 };
 
 function confirmDelete(label: string, onConfirm: () => void) {
@@ -54,6 +55,7 @@ export function CustomPath({
   onSelect,
   onCreate,
   onDelete,
+  onEdit,
 }: CustomPathProps) {
   return (
     <View style={customStyles.column}>
@@ -92,7 +94,7 @@ export function CustomPath({
               accessibilityLabel={`${preset.label} প্রিসেট`}
               delayLongPress={420}
               onLongPress={() => confirmDelete(preset.label, () => onDelete(preset.id))}
-              onPress={() => onSelect(preset.id)}
+              onPress={() => onEdit(preset)}
               style={({ pressed }) => [
                 customStyles.row,
                 isCurrent && customStyles.rowCurrent,
