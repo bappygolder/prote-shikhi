@@ -879,3 +879,104 @@ test('getUnlockedCards: returns all cards when progress is empty (none mastered)
   const unlocked = getUnlockedCards(path, {});
   assert.equal(unlocked.length, 3);
 });
+
+// ---------------------------------------------------------------------------
+// Practice mode
+// ---------------------------------------------------------------------------
+
+test('initSessionState: sets practiceMode=true when all cards are mastered', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  const session = initSessionState(path, progress, mulberry32(1));
+  assert.equal(session.practiceMode, true);
+});
+
+test('initSessionState: all cards go into spaces when practiceMode (waitingPool and graduatedPool empty)', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  const session = initSessionState(path, progress, mulberry32(1));
+  assert.equal(session.spaces.length, 3);
+  assert.equal(session.waitingPool.length, 0);
+  assert.equal(session.graduatedPool.length, 0);
+});
+
+test('initSessionState: practiceMode=false when any card is unmastered', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    // card-2 and card-3 not mastered
+  };
+  const session = initSessionState(path, progress, mulberry32(1));
+  assert.equal(session.practiceMode, false);
+});
+
+test('buildCycleQueue: practice mode uses error-rate slots (higher wrongCount → more slots)', () => {
+  const spaces = ['card-1', 'card-2'];
+  const progress: ProgressByCard = {
+    // card-1: no wrongs → slots = 1 + round(0/(0+1)*2) = 1
+    'card-1': { ...getProgressForCard({}, 'card-1'), seenCount: 10, wrongCount: 0 },
+    // card-2: half wrong → slots = 1 + round((5/11)*2) = 1 + round(0.909) = 1 + 1 = 2
+    'card-2': { ...getProgressForCard({}, 'card-2'), seenCount: 10, wrongCount: 5 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1), { practiceMode: true });
+  // card-1: 1 slot, card-2: 2 slots → total 3
+  assert.equal(queue.length, 3);
+  assert.equal(queue.filter(id => id === 'card-2').length, 2);
+  assert.equal(queue.filter(id => id === 'card-1').length, 1);
+});
+
+test('tickCycle: practice mode does not graduate cards out of spaces', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  let session = initSessionState(path, progress, mulberry32(1));
+  assert.equal(session.practiceMode, true);
+  assert.equal(session.spaces.length, 3);
+
+  session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(1));
+
+  assert.equal(session.spaces.length, 3);
+  assert.ok(session.spaces.includes('card-1'));
+  assert.ok(session.spaces.includes('card-2'));
+  assert.ok(session.spaces.includes('card-3'));
+});
+
+test('tickCycle: practice mode does not shrink spaces on wrong answers', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  let session = initSessionState(path, progress, mulberry32(1));
+
+  session = tickCycle(
+    { ...session, currentCycleWrongs: CYCLE_WRONGS_TO_SHRINK + 5 },
+    progress,
+    path,
+    mulberry32(1),
+  );
+  assert.equal(session.spaces.length, 3, 'practice mode should not shrink spaces');
+});
+
+test('tickCycle: practice mode preserves practiceMode=true across ticks', () => {
+  const path = makePath(2);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  let session = initSessionState(path, progress, mulberry32(1));
+  session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(1));
+  assert.equal(session.practiceMode, true);
+});

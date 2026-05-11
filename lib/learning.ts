@@ -74,6 +74,7 @@ export type SessionState = {
   currentCycleWrongs: number;
 
   previousCardId: string | null;
+  practiceMode: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -385,13 +386,37 @@ export function tickCycle(
   path: LetterCard[],
   rng: () => number = Math.random,
 ): SessionState {
-  // 1. Check all-correct
-  const allCorrect = state.currentCycleWrongs === 0;
+  // Practice mode: skip all graduation/grow/shrink logic
+  if (state.practiceMode) {
+    const newCycleHistory = [...state.cycleHistory, state.cycleQueue].slice(-3);
+    const newCurrentCycleIndex = state.currentCycleIndex + 1;
+    const nextCycleQueue = buildCycleQueue(
+      state.spaces,
+      progress,
+      newCycleHistory,
+      newCurrentCycleIndex,
+      rng,
+      {
+        graduatedPool: state.graduatedPool,
+        waitingPool: state.waitingPool,
+        practiceMode: true,
+        previousCardId: state.previousCardId,
+      },
+    );
+    return {
+      ...state,
+      cycleQueue: nextCycleQueue,
+      cycleIndex: 0,
+      cycleHistory: newCycleHistory,
+      currentCycleIndex: newCurrentCycleIndex,
+      currentCycleWrongs: 0,
+    };
+  }
 
-  // 2. Update cycleCount
+  // Learning mode
+  const allCorrect = state.currentCycleWrongs === 0;
   let newCycleCount = allCorrect ? state.cycleCount + 1 : 0;
 
-  // 3. Graduate cards that reached session mastery
   const newSpaces = [...state.spaces];
   const newWaitingPool = [...state.waitingPool];
   const newGraduatedPool = [...state.graduatedPool];
@@ -407,7 +432,6 @@ export function tickCycle(
     if (!newGraduatedPool.includes(id)) newGraduatedPool.push(id);
   }
 
-  // 4. Add new cards from waitingPool for each graduated slot (Trigger B)
   let backfilledCount = 0;
   for (let i = 0; i < toGraduate.length; i++) {
     if (newWaitingPool.length > 0 && newSpaces.length < SPACES_MAX) {
@@ -416,12 +440,10 @@ export function tickCycle(
       backfilledCount++;
     }
   }
-  // Reset cycle counter after backfill to avoid unearned Trigger A growth
   if (toGraduate.length > 0 && backfilledCount > 0) {
     newCycleCount = 0;
   }
 
-  // 5. Trigger A: consecutive all-correct cycles → grow by 1
   if (
     newCycleCount >= CYCLES_TO_GROW &&
     newSpaces.length < SPACES_MAX &&
@@ -432,12 +454,10 @@ export function tickCycle(
     newCycleCount = 0;
   }
 
-  // 6. Shrink: too many wrongs this cycle
   if (
     state.currentCycleWrongs > CYCLE_WRONGS_TO_SHRINK &&
     newSpaces.length > SPACES_MIN
   ) {
-    // Find weakest card: lowest cumulative score
     let weakestId = newSpaces[0];
     let weakestScore = Infinity;
     for (const id of newSpaces) {
@@ -450,18 +470,13 @@ export function tickCycle(
     }
     const idx = newSpaces.indexOf(weakestId);
     if (idx !== -1) newSpaces.splice(idx, 1);
-    // Put back at front of waitingPool so it re-enters soon
     newWaitingPool.unshift(weakestId);
     newCycleCount = 0;
   }
 
-  // 7. Update cycleHistory: keep last 3
   const newCycleHistory = [...state.cycleHistory, state.cycleQueue].slice(-3);
-
-  // 8. Increment currentCycleIndex
   const newCurrentCycleIndex = state.currentCycleIndex + 1;
 
-  // 9. Build next cycleQueue
   const nextCycleQueue = buildCycleQueue(
     newSpaces,
     progress,
@@ -499,6 +514,34 @@ export function initSessionState(
   progress: ProgressByCard,
   rng: () => number = Math.random,
 ): SessionState {
+  const allMastered =
+    path.length > 0 &&
+    path.every((card) => getProgressForCard(progress, card.id).mastered);
+
+  if (allMastered) {
+    const spaces = path.map((c) => c.id);
+    const cycleQueue = buildCycleQueue(spaces, progress, [], 0, rng, {
+      graduatedPool: [],
+      waitingPool: [],
+      practiceMode: true,
+    });
+    return {
+      startedAt: new Date().toISOString(),
+      cardsShown: 0,
+      spaces,
+      waitingPool: [],
+      graduatedPool: [],
+      cycleQueue,
+      cycleIndex: 0,
+      cycleCount: 0,
+      cycleHistory: [],
+      currentCycleIndex: 0,
+      currentCycleWrongs: 0,
+      previousCardId: null,
+      practiceMode: true,
+    };
+  }
+
   const unmastered = path.filter(
     (card) => !getProgressForCard(progress, card.id).mastered,
   );
@@ -529,6 +572,7 @@ export function initSessionState(
     currentCycleIndex: 0,
     currentCycleWrongs: 0,
     previousCardId: null,
+    practiceMode: false,
   };
 }
 
