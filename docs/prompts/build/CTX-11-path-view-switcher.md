@@ -1,6 +1,6 @@
 # CTX-11 — Path View Switcher + Flat View
 
-**Status**: ⏳ Pending
+**Status**: ✅ Done
 **Created**: 2026-05-11
 **Roadmap link**: `docs/plans/bornomala-roadmap-may2026-improvements.md` → row 5 + per-prompt scope
 **Depends on**: CTX-08 ✅, UX-04 ✅, CTX-10 ✅ (all landed on main)
@@ -199,3 +199,24 @@ When complete, update this file's **Status** to ✅ and append:
 - Any regressions or edge cases discovered
 - Confirm `npm run typecheck` and `npm test` pass
 ```
+
+---
+
+## Handoff
+
+**Branch**: `feat/ctx-11-path-switcher`
+**Final commit**: `3ebc900`
+
+### Tasks completed
+- [x] Task 1 — Worktree + directory scaffold
+- [x] Task 2 — Extracted `PresetPath` into `components/path/PresetPath.tsx`
+- [x] Task 3 — Built `FlatPath.tsx` (flat preset rows with progress bar + status icon)
+- [x] Task 4 — Built `PathSwitcher.tsx` (two-pill segmented control)
+- [x] Task 5 — Created `components/path/index.ts` barrel
+- [x] Task 6 — Wired into `App.tsx` with AsyncStorage persistence (`porashikhi.ui.pathView.v1`)
+
+### Notes
+- Interface kept at preset-level (not card-level as in prompt spec) — preserves "pure render layer" guarantee; both views are true drop-in alternatives
+- FlatPath rows: one per preset (10 rows), letter glyph + progress bar (red→orange→amber→teal→green) + status icon (○/◑/▶/✓)
+- `npm run typecheck` ✅ — zero errors
+- `npm test` ✗ — pre-existing esbuild arch mismatch (darwin-x64 vs arm64), fails identically on `main`, no regression introduced
