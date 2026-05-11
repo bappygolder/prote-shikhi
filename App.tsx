@@ -230,6 +230,7 @@ const levelDotsStyles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
     alignSelf: 'flex-start',
+    marginLeft: 12,
     marginBottom: 6,
   },
   pip: {
@@ -1296,13 +1297,15 @@ function App() {
                 </Text>
               </View>
               <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
-                <LevelDots level={currentProgress.level} />
-                <LetterProgressMark
-                  completed={currentProgress.levelCorrect}
-                  letter={currentDisplayLetter}
-                  percent={Math.round((currentProgress.levelCorrect / (PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1])) * 100)}
-                  total={PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1]}
-                />
+                <View style={styles.letterProgressOuter}>
+                  <LevelDots level={currentProgress.level} />
+                  <LetterProgressMark
+                    completed={currentProgress.levelCorrect}
+                    letter={currentDisplayLetter}
+                    percent={Math.round((currentProgress.levelCorrect / (PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1])) * 100)}
+                    total={PHASE_THRESHOLDS[currentProgress.level] ?? PHASE_THRESHOLDS[PHASE_THRESHOLDS.length - 1]}
+                  />
+                </View>
               </View>
               {gradeFeedback ? (
                 <Animated.View

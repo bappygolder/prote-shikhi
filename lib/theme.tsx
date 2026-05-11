@@ -293,6 +293,10 @@ function makeStyles(c: ColorTokens) {
       paddingTop: 4,
       paddingBottom: 4,
     },
+    letterProgressOuter: {
+      width: '82%',
+      maxWidth: 320,
+    },
     cardAccent: {
       position: 'absolute',
       width: 104,
@@ -321,8 +325,7 @@ function makeStyles(c: ColorTokens) {
       fontSize: 140,
     },
     letterProgressMark: {
-      width: '82%',
-      maxWidth: 320,
+      width: '100%',
       minHeight: 60,
       flexDirection: 'row',
       alignItems: 'center',
