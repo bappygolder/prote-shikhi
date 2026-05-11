@@ -35,7 +35,7 @@ export type FlatPathProps = {
   presets: PracticePreset[];
   progress: ProgressByCard;
   currentPresetId: string | null;
-  onSelect: (presetId: string) => void;
+  onDetail: (preset: PracticePreset) => void;
   onLongPressReset: (preset: PracticePreset) => void;
 };
 
@@ -43,7 +43,7 @@ export function FlatPath({
   presets,
   progress,
   currentPresetId,
-  onSelect,
+  onDetail,
   onLongPressReset,
 }: FlatPathProps) {
   return (
@@ -66,7 +66,7 @@ export function FlatPath({
             accessibilityLabel={`${preset.label} প্রিসেট`}
             delayLongPress={420}
             onLongPress={() => onLongPressReset(preset)}
-            onPress={() => onSelect(preset.id)}
+            onPress={() => onDetail(preset)}
             style={({ pressed }) => [
               flatStyles.row,
               isCurrent && flatStyles.rowCurrent,

@@ -14,6 +14,7 @@ export type PresetPathProps = {
   presets: PracticePreset[];
   progress: ProgressByCard;
   currentPresetId: string | null;
+  onDetail: (preset: PracticePreset) => void;
   onSelect: (presetId: string) => void;
   onLongPressReset: (preset: PracticePreset) => void;
 };
@@ -22,6 +23,7 @@ export function PresetPath({
   presets,
   progress,
   currentPresetId,
+  onDetail,
   onSelect,
   onLongPressReset,
 }: PresetPathProps) {
@@ -52,7 +54,7 @@ export function PresetPath({
               accessibilityLabel={`${preset.label} প্রিসেট`}
               delayLongPress={420}
               onLongPress={() => onLongPressReset(preset)}
-              onPress={() => onSelect(preset.id)}
+              onPress={() => onDetail(preset)}
               style={({ pressed }) => [
                 styles.pathNode,
                 state === 'started' && styles.pathNodeStarted,

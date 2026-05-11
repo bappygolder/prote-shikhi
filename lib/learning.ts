@@ -654,3 +654,26 @@ export function chooseNextCard(
 
   return weightedRandomPick(filtered, rng);
 }
+
+// ---------------------------------------------------------------------------
+// Global progress — per-click tracking across all cards in the active path
+// ---------------------------------------------------------------------------
+
+export function computeGlobalProgress(
+  progress: ProgressByCard,
+  cards: LetterCard[],
+): { earned: number; max: number; percent: number } {
+  const PER_LETTER_MAX = WARMUP_PER_CARD + MASTERY_TARGET;
+  let earned = 0;
+  for (const card of cards) {
+    const p = getProgressForCard(progress, card.id);
+    if (p.mastered) {
+      earned += PER_LETTER_MAX;
+    } else {
+      earned += Math.min(p.correctCount, WARMUP_PER_CARD) + p.streak;
+    }
+  }
+  const max = cards.length * PER_LETTER_MAX;
+  const percent = max > 0 ? Math.min(100, Math.round((earned / max) * 100)) : 0;
+  return { earned, max, percent };
+}

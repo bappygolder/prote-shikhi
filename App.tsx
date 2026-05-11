@@ -25,12 +25,13 @@ import {
   type PracticePreset,
 } from './data/banglaLetters';
 import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
-import { FlatPath, PathSwitcher, PresetPath, type PathView } from './components/path';
+import { FlatPath, PathSwitcher, PresetDetailModal, PresetPath, type PathView } from './components/path';
 import {
   applyActiveSetOnCorrect,
   applyActiveSetOnMastery,
   applyGrade,
   chooseNextCard,
+  computeGlobalProgress,
   eligibleForSprinkle,
   getProgressForCard,
   getUnlockedCards,
@@ -57,6 +58,7 @@ const LAST_TAB_STORAGE_KEY = 'porashikhi.lastTab.v1';
 const HEATMAP_VISIBLE_KEY = 'porashikhi.ui.heatmap.visible.v1';
 const PATH_VIEW_STORAGE_KEY = 'porashikhi.ui.pathView.v1';
 const SELECTED_PRESET_STORAGE_KEY = 'porashikhi.selectedPreset.v1';
+const PRESET_RESETS_KEY = 'porashikhi.presetResets.v1';
 const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
 const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -205,10 +207,26 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
   const clampedPercent = Math.max(0, Math.min(100, percent));
   const clampedCompleted = Math.max(0, Math.min(total, completed));
   const animatedPercent = useRef(new Animated.Value(clampedPercent)).current;
+
   const fillWidth = animatedPercent.interpolate({
     inputRange: [0, 100],
     outputRange: ['0%', '100%'],
   });
+  // Color shifts indigo → teal → green → amber as the learner progresses
+  const fillColor = animatedPercent.interpolate({
+    inputRange: [0, 30, 65, 100],
+    outputRange: ['#6366f1', '#0d9488', '#16a34a', '#f59e0b'],
+  });
+  // Glow intensity builds toward completion
+  const glowOpacity = animatedPercent.interpolate({
+    inputRange: [0, 20, 100],
+    outputRange: [0, 0.2, 0.7],
+  });
+  const glowRadius = animatedPercent.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, 9],
+  });
+
   const breakpoints = Array.from(
     { length: Math.max(0, total - 1) },
     (_, index) => `${((index + 1) / total) * 100}%` as `${number}%`,
@@ -218,7 +236,7 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
   useEffect(() => {
     Animated.timing(animatedPercent, {
       toValue: clampedPercent,
-      duration: 420,
+      duration: 700,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
@@ -245,7 +263,21 @@ function ProgressBar({ label, completed, total, percent }: ProgressBarProps) {
         }}
         style={styles.progressTrack}
       >
-        <Animated.View style={[styles.progressFill, { width: fillWidth }]} />
+        <Animated.View
+          style={[
+            styles.progressFill,
+            {
+              width: fillWidth,
+              backgroundColor: fillColor,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              shadowColor: fillColor as any,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: glowOpacity as any,
+              shadowRadius: glowRadius as any,
+              elevation: 4,
+            },
+          ]}
+        />
         {breakpoints.map((left) => (
           <View
             key={left}
@@ -389,6 +421,8 @@ function App() {
   const [heatmapVisible, setHeatmapVisible] = useState(true);
   const [pathView, setPathView] = useState<PathView>('zigzag');
   const [statsModalCard, setStatsModalCard] = useState<LetterCard | null>(null);
+  const [detailPreset, setDetailPreset] = useState<PracticePreset | null>(null);
+  const [presetResetCounts, setPresetResetCounts] = useState<Record<string, number>>({});
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -405,8 +439,9 @@ function App() {
       AsyncStorage.getItem(HEATMAP_VISIBLE_KEY),
       AsyncStorage.getItem(SELECTED_PRESET_STORAGE_KEY),
       AsyncStorage.getItem(PATH_VIEW_STORAGE_KEY),
+      AsyncStorage.getItem(PRESET_RESETS_KEY),
     ])
-      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId, savedPathView]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId, savedPathView, savedPresetResets]) => {
         if (!isMounted) {
           return;
         }
@@ -456,6 +491,17 @@ function App() {
 
         if (savedPathView === 'zigzag' || savedPathView === 'flat') {
           setPathView(savedPathView);
+        }
+
+        if (savedPresetResets) {
+          try {
+            const parsed = JSON.parse(savedPresetResets);
+            if (parsed && typeof parsed === 'object') {
+              setPresetResetCounts(parsed as Record<string, number>);
+            }
+          } catch {
+            // ignore malformed data
+          }
         }
       })
       .catch(() => {
@@ -584,8 +630,9 @@ function App() {
   const masteredCount = selectedPresetCards.filter(
     (card) => getProgressForCard(progress, card.id).mastered,
   ).length;
-  const totalMasteryPercent = Math.round(
-    (masteredCount / selectedPresetCards.length) * 100,
+  const { percent: totalMasteryPercent } = computeGlobalProgress(
+    progress,
+    selectedPresetCards,
   );
   const currentMasteryPercent = getMasteryPercent(progress, currentCard.id);
   const sessionAccuracy =
@@ -951,6 +998,40 @@ function App() {
     AsyncStorage.setItem(PATH_VIEW_STORAGE_KEY, view).catch(() => {});
   }
 
+  function handleShowPresetDetail(preset: PracticePreset) {
+    setDetailPreset(preset);
+  }
+
+  function handleClosePresetDetail() {
+    setDetailPreset(null);
+  }
+
+  function handlePracticeFromDetail(presetId: string) {
+    setDetailPreset(null);
+    handleSelectPreset(presetId);
+  }
+
+  function handleResetFromDetail(preset: PracticePreset) {
+    confirmDestructiveAction(
+      'তালিকা রিসেট',
+      `"${preset.label}"-এর সব অক্ষরের অগ্রগতি মুছে ফেলবেন?`,
+      () => {
+        setProgress((current) =>
+          resetCards(
+            current,
+            preset.cards.map((card) => card.id),
+          ),
+        );
+        setDetailPreset(null);
+        setPresetResetCounts((current) => {
+          const next = { ...current, [preset.id]: (current[preset.id] ?? 0) + 1 };
+          AsyncStorage.setItem(PRESET_RESETS_KEY, JSON.stringify(next)).catch(() => {});
+          return next;
+        });
+      },
+    );
+  }
+
   function handleSelectPreset(presetId: string) {
     const preset =
       PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
@@ -1041,6 +1122,7 @@ function App() {
                   presets={PRACTICE_PRESETS}
                   progress={progress}
                   currentPresetId={currentPathPresetId}
+                  onDetail={handleShowPresetDetail}
                   onSelect={handleSelectPreset}
                   onLongPressReset={handleResetPreset}
                 />
@@ -1049,7 +1131,7 @@ function App() {
                   presets={PRACTICE_PRESETS}
                   progress={progress}
                   currentPresetId={currentPathPresetId}
-                  onSelect={handleSelectPreset}
+                  onDetail={handleShowPresetDetail}
                   onLongPressReset={handleResetPreset}
                 />
               )}
@@ -1618,6 +1700,15 @@ function App() {
           </Pressable>
         </Pressable>
       </Modal>
+      <PresetDetailModal
+        preset={detailPreset}
+        allPresets={PRACTICE_PRESETS}
+        progress={progress}
+        resetCount={detailPreset ? (presetResetCounts[detailPreset.id] ?? 0) : 0}
+        onClose={handleClosePresetDetail}
+        onPractice={handlePracticeFromDetail}
+        onReset={handleResetFromDetail}
+      />
     </SafeAreaView>
   );
 }
