@@ -1,5 +1,6 @@
 import {
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -27,7 +28,7 @@ function barColor(pct: number): string {
 function CardRow({ card, progress }: { card: LetterCard; progress: ProgressByCard }) {
   const p = getProgressForCard(progress, card.id);
   const hasStarted = p.seenCount > 0;
-  const { mastered, correctCount, wrongCount, streak, bestStreak } = p;
+  const { mastered, correctCount, wrongCount, level, levelCorrect } = p;
 
   return (
     <View style={s.cardRow}>
@@ -48,20 +49,12 @@ function CardRow({ card, progress }: { card: LetterCard; progress: ProgressByCar
             <Text style={s.statCorrect}>✓ {toBn(correctCount)}</Text>
             <Text style={s.statSep}>·</Text>
             <Text style={s.statWrong}>✗ {toBn(wrongCount)}</Text>
-            {bestStreak > 0 ? (
-              <>
-                <Text style={s.statSep}>·</Text>
-                <Text style={s.statStreak}>🔥 {toBn(bestStreak)}</Text>
-              </>
-            ) : null}
           </View>
         ) : (
           <Text style={s.cardNotStarted}>এখনো শুরু হয়নি</Text>
         )}
         {hasStarted ? (
-          <Text style={s.cardSubtext}>
-            মোট চেষ্টা {toBn(p.seenCount)}
-          </Text>
+          <Text style={s.cardSubtext}>মোট চেষ্টা {toBn(p.seenCount)}</Text>
         ) : null}
       </View>
 
@@ -70,7 +63,8 @@ function CardRow({ card, progress }: { card: LetterCard; progress: ProgressByCar
           <Text style={s.iconMastered}>✓</Text>
         ) : hasStarted ? (
           <View style={s.streakBadge}>
-            <Text style={s.streakBadgeText}>{toBn(streak)}/১০</Text>
+            <Text style={s.streakBadgeText}>স্তর {toBn(level)}</Text>
+            <Text style={s.streakBadgeSubtext}>{toBn(levelCorrect)} সঠিক</Text>
           </View>
         ) : (
           <Text style={s.iconLocked}>○</Text>
@@ -101,9 +95,12 @@ export function PresetDetailModal({
   onReset,
   onNavigate,
 }: PresetDetailModalProps) {
+  const isWeb = Platform.OS === 'web';
+
   const index = preset ? allPresets.findIndex((p) => p.id === preset.id) : -1;
   const prevPreset = preset && index > 0 ? allPresets[index - 1] : null;
-  const nextPreset = preset && index >= 0 && index < allPresets.length - 1 ? allPresets[index + 1] : null;
+  const nextPreset =
+    preset && index >= 0 && index < allPresets.length - 1 ? allPresets[index + 1] : null;
 
   const masteredCount = preset
     ? preset.cards.filter((c) => getProgressForCard(progress, c.id).mastered).length
@@ -118,6 +115,148 @@ export function PresetDetailModal({
     : 0;
   const color = barColor(percent);
 
+  const panelContent = preset ? (
+    <>
+      {/* ── Header ── */}
+      <View style={s.header}>
+        <Pressable onPress={onClose} hitSlop={12} style={s.closeBtn}>
+          <Text style={s.closeBtnText}>✕</Text>
+        </Pressable>
+        <View style={s.headerCenter}>
+          <Text style={s.headerGlyph}>{preset.cards[0]?.letter ?? '·'}</Text>
+          <View>
+            <Text style={s.headerLabel}>{preset.label}</Text>
+            <Text style={s.headerStep}>
+              ধাপ {toBn(index + 1)}/{toBn(allPresets.length)}
+            </Text>
+          </View>
+        </View>
+        <View style={s.closeBtn} />
+      </View>
+
+      {/* ── Nav row ── */}
+      <View style={s.navRow}>
+        <Pressable
+          style={({ pressed }) => [
+            s.navBtn,
+            !prevPreset && s.navBtnDisabled,
+            pressed && s.navBtnPressed,
+          ]}
+          onPress={() => prevPreset && onNavigate(prevPreset)}
+          disabled={!prevPreset}
+        >
+          <Text style={[s.navBtnText, !prevPreset && s.navBtnTextDisabled]}>
+            ← {prevPreset ? prevPreset.label : 'শুরু'}
+          </Text>
+        </Pressable>
+        <View style={s.navDot} />
+        <Pressable
+          style={({ pressed }) => [
+            s.navBtn,
+            s.navBtnRight,
+            !nextPreset && s.navBtnDisabled,
+            pressed && s.navBtnPressed,
+          ]}
+          onPress={() => nextPreset && onNavigate(nextPreset)}
+          disabled={!nextPreset}
+        >
+          <Text style={[s.navBtnText, s.navBtnTextRight, !nextPreset && s.navBtnTextDisabled]}>
+            {nextPreset ? nextPreset.label : 'শেষ'} →
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* ── Stats bar ── */}
+      <View style={s.statsBlock}>
+        <View style={s.statsBigRow}>
+          <View style={s.statBig}>
+            <Text style={s.statBigValue}>
+              {toBn(masteredCount)}/{toBn(totalCount)}
+            </Text>
+            <Text style={s.statBigLabel}>আয়ত্ত</Text>
+          </View>
+          <View style={s.statsDivider} />
+          <View style={s.statBig}>
+            <Text style={[s.statBigValue, { color }]}>{toBn(percent)}%</Text>
+            <Text style={s.statBigLabel}>অগ্রগতি</Text>
+          </View>
+          <View style={s.statsDivider} />
+          <View style={s.statBig}>
+            <Text style={s.statBigValue}>{toBn(totalAttempts)}</Text>
+            <Text style={s.statBigLabel}>চেষ্টা</Text>
+          </View>
+          <View style={s.statsDivider} />
+          <View style={s.statBig}>
+            <Text style={[s.statBigValue, totalWrong > 0 && s.statBigWrong]}>
+              {toBn(totalWrong)}
+            </Text>
+            <Text style={s.statBigLabel}>ভুল</Text>
+          </View>
+          <View style={s.statsDivider} />
+          <View style={s.statBig}>
+            <Text style={s.statBigValue}>{toBn(resetCount)}</Text>
+            <Text style={s.statBigLabel}>রিসেট</Text>
+          </View>
+        </View>
+        <View style={s.barTrack}>
+          <View
+            style={[
+              s.barFill,
+              { width: `${percent}%` as unknown as number, backgroundColor: color },
+            ]}
+          />
+        </View>
+      </View>
+
+      <View style={s.divider} />
+
+      {/* ── Per-card list ── */}
+      <ScrollView
+        style={[s.scroll, isWeb && s.scrollWeb]}
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={s.sectionHeader}>এই পথের অক্ষরগুলো</Text>
+        {preset.cards.map((card) => (
+          <CardRow key={card.id} card={card} progress={progress} />
+        ))}
+      </ScrollView>
+
+      {/* ── Bottom actions ── */}
+      <View style={s.bottomBar}>
+        <Pressable
+          style={({ pressed }) => [s.resetBtn, pressed && s.btnPressed]}
+          onPress={() => onReset(preset)}
+        >
+          <Text style={s.resetBtnText}>রিসেট</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [s.practiceBtn, pressed && s.btnPressed]}
+          onPress={() => onPractice(preset.id)}
+        >
+          <Text style={s.practiceBtnText}>অনুশীলন করুন ▶</Text>
+        </Pressable>
+      </View>
+    </>
+  ) : null;
+
+  if (isWeb) {
+    return (
+      <Modal
+        visible={preset !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+      >
+        <Pressable style={s.webBackdrop} onPress={onClose}>
+          <Pressable style={s.webPanel} onPress={() => {}}>
+            {panelContent}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       visible={preset !== null}
@@ -125,125 +264,32 @@ export function PresetDetailModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={s.screen}>
-        {preset ? (
-          <>
-            {/* ── Header ── */}
-            <View style={s.header}>
-              <Pressable onPress={onClose} hitSlop={12} style={s.closeBtn}>
-                <Text style={s.closeBtnText}>✕</Text>
-              </Pressable>
-              <View style={s.headerCenter}>
-                <Text style={s.headerGlyph}>{preset.cards[0]?.letter ?? '·'}</Text>
-                <View>
-                  <Text style={s.headerLabel}>{preset.label}</Text>
-                  <Text style={s.headerStep}>ধাপ {toBn(index + 1)}/{toBn(allPresets.length)}</Text>
-                </View>
-              </View>
-              <View style={s.closeBtn} />
-            </View>
-
-            {/* ── Nav row — clickable prev / next ── */}
-            <View style={s.navRow}>
-              <Pressable
-                style={({ pressed }) => [s.navBtn, !prevPreset && s.navBtnDisabled, pressed && s.navBtnPressed]}
-                onPress={() => prevPreset && onNavigate(prevPreset)}
-                disabled={!prevPreset}
-              >
-                <Text style={[s.navBtnText, !prevPreset && s.navBtnTextDisabled]}>
-                  ← {prevPreset ? prevPreset.label : 'শুরু'}
-                </Text>
-              </Pressable>
-              <View style={s.navDot} />
-              <Pressable
-                style={({ pressed }) => [s.navBtn, s.navBtnRight, !nextPreset && s.navBtnDisabled, pressed && s.navBtnPressed]}
-                onPress={() => nextPreset && onNavigate(nextPreset)}
-                disabled={!nextPreset}
-              >
-                <Text style={[s.navBtnText, s.navBtnTextRight, !nextPreset && s.navBtnTextDisabled]}>
-                  {nextPreset ? nextPreset.label : 'শেষ'} →
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* ── Stats bar ── */}
-            <View style={s.statsBlock}>
-              <View style={s.statsBigRow}>
-                <View style={s.statBig}>
-                  <Text style={s.statBigValue}>{toBn(masteredCount)}/{toBn(totalCount)}</Text>
-                  <Text style={s.statBigLabel}>আয়ত্ত</Text>
-                </View>
-                <View style={s.statsDivider} />
-                <View style={s.statBig}>
-                  <Text style={[s.statBigValue, { color }]}>{toBn(percent)}%</Text>
-                  <Text style={s.statBigLabel}>অগ্রগতি</Text>
-                </View>
-                <View style={s.statsDivider} />
-                <View style={s.statBig}>
-                  <Text style={s.statBigValue}>{toBn(totalAttempts)}</Text>
-                  <Text style={s.statBigLabel}>চেষ্টা</Text>
-                </View>
-                <View style={s.statsDivider} />
-                <View style={s.statBig}>
-                  <Text style={[s.statBigValue, totalWrong > 0 && s.statBigWrong]}>{toBn(totalWrong)}</Text>
-                  <Text style={s.statBigLabel}>ভুল</Text>
-                </View>
-                <View style={s.statsDivider} />
-                <View style={s.statBig}>
-                  <Text style={s.statBigValue}>{toBn(resetCount)}</Text>
-                  <Text style={s.statBigLabel}>রিসেট</Text>
-                </View>
-              </View>
-              <View style={s.barTrack}>
-                <View
-                  style={[
-                    s.barFill,
-                    { width: `${percent}%` as unknown as number, backgroundColor: color },
-                  ]}
-                />
-              </View>
-            </View>
-
-            <View style={s.divider} />
-
-            {/* ── Per-card list ── */}
-            <ScrollView
-              style={s.scroll}
-              contentContainerStyle={s.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={s.sectionHeader}>এই পথের অক্ষরগুলো</Text>
-              {preset.cards.map((card) => (
-                <CardRow key={card.id} card={card} progress={progress} />
-              ))}
-            </ScrollView>
-
-            {/* ── Bottom actions (fixed) ── */}
-            <View style={s.bottomBar}>
-              <Pressable
-                style={({ pressed }) => [s.resetBtn, pressed && s.btnPressed]}
-                onPress={() => onReset(preset)}
-              >
-                <Text style={s.resetBtnText}>রিসেট</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [s.practiceBtn, pressed && s.btnPressed]}
-                onPress={() => onPractice(preset.id)}
-              >
-                <Text style={s.practiceBtnText}>অনুশীলন করুন ▶</Text>
-              </Pressable>
-            </View>
-          </>
-        ) : null}
-      </SafeAreaView>
+      <SafeAreaView style={s.screen}>{panelContent}</SafeAreaView>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
+  // Native full-screen container
   screen: {
     flex: 1,
     backgroundColor: '#faf7f0',
+  },
+
+  // Web: backdrop + centered panel
+  webBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  webPanel: {
+    width: '100%',
+    maxWidth: 560,
+    backgroundColor: '#faf7f0',
+    borderRadius: 16,
+    overflow: 'hidden',
   },
 
   // Header
@@ -386,6 +432,10 @@ const s = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  scrollWeb: {
+    flex: 0,
+    maxHeight: 360,
+  },
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -417,15 +467,9 @@ const s = StyleSheet.create({
     textAlign: 'center',
     color: '#111827',
   },
-  cardGlyphMastered: {
-    color: '#047857',
-  },
-  cardGlyphStarted: {
-    color: '#f4512a',
-  },
-  cardGlyphLocked: {
-    color: '#9ca3af',
-  },
+  cardGlyphMastered: { color: '#047857' },
+  cardGlyphStarted: { color: '#f4512a' },
+  cardGlyphLocked: { color: '#9ca3af' },
   cardMid: {
     flex: 1,
     gap: 3,
@@ -482,12 +526,18 @@ const s = StyleSheet.create({
     backgroundColor: '#e5ddc7',
     borderRadius: 8,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
+    alignItems: 'center',
   },
   streakBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     color: '#374151',
+  },
+  streakBadgeSubtext: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: '#6b7280',
   },
 
   // Bottom bar

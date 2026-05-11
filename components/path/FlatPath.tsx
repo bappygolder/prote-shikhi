@@ -16,19 +16,13 @@ function masteryBarColor(percent: number): string {
   return '#10b981';
 }
 
-function StatusIcon({
-  mastered,
-  started,
-  isCurrent,
-}: {
-  mastered: boolean;
-  started: boolean;
-  isCurrent: boolean;
-}) {
-  if (mastered) return <Text style={flatStyles.iconMastered}>✓</Text>;
-  if (isCurrent) return <Text style={flatStyles.iconCurrent}>▶</Text>;
-  if (started) return <Text style={flatStyles.iconStarted}>◑</Text>;
-  return <Text style={flatStyles.iconLocked}>○</Text>;
+type RowState = 'locked' | 'started' | 'current' | 'mastered';
+
+function StatusDot({ state }: { state: RowState }) {
+  if (state === 'mastered') return <Text style={flatStyles.dotMastered}>✓</Text>;
+  if (state === 'current') return <Text style={flatStyles.dotCurrent}>▶</Text>;
+  if (state === 'started') return <Text style={flatStyles.dotStarted}>◑</Text>;
+  return <Text style={flatStyles.dotLocked}>○</Text>;
 }
 
 export type FlatPathProps = {
@@ -36,6 +30,7 @@ export type FlatPathProps = {
   progress: ProgressByCard;
   currentPresetId: string | null;
   onDetail: (preset: PracticePreset) => void;
+  onSelect: (presetId: string) => void;
   onLongPressReset: (preset: PracticePreset) => void;
 };
 
@@ -44,6 +39,7 @@ export function FlatPath({
   progress,
   currentPresetId,
   onDetail,
+  onSelect,
   onLongPressReset,
 }: FlatPathProps) {
   return (
@@ -59,6 +55,14 @@ export function FlatPath({
         const isCurrent = preset.id === currentPresetId;
         const hasStarted = !isMastered && masteredCount > 0;
         const barColor = masteryBarColor(percent);
+
+        const state: RowState = isMastered
+          ? 'mastered'
+          : isCurrent
+            ? 'current'
+            : hasStarted
+              ? 'started'
+              : 'locked';
 
         return (
           <Pressable
@@ -77,9 +81,9 @@ export function FlatPath({
               <Text
                 style={[
                   flatStyles.glyph,
-                  isMastered && flatStyles.glyphMastered,
-                  isCurrent && flatStyles.glyphCurrent,
-                  !isCurrent && !isMastered && !hasStarted && flatStyles.glyphLocked,
+                  state === 'mastered' && flatStyles.glyphMastered,
+                  state === 'current' && flatStyles.glyphCurrent,
+                  state === 'locked' && flatStyles.glyphLocked,
                 ]}
               >
                 {preset.cards[0]?.letter ?? '·'}
@@ -87,15 +91,29 @@ export function FlatPath({
             </View>
 
             <View style={flatStyles.midCell}>
-              <Text
-                style={[
-                  flatStyles.label,
-                  !isCurrent && !isMastered && !hasStarted && flatStyles.labelLocked,
-                ]}
-                numberOfLines={1}
-              >
-                {preset.label}
-              </Text>
+              <View style={flatStyles.titleRow}>
+                <Text
+                  style={[
+                    flatStyles.label,
+                    state === 'locked' && flatStyles.labelLocked,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {preset.label}
+                </Text>
+                <Text style={flatStyles.sep}> · </Text>
+                <StatusDot state={state} />
+                <Text style={flatStyles.sep}> · </Text>
+                <Text
+                  style={[
+                    flatStyles.percent,
+                    state === 'locked' && flatStyles.percentLocked,
+                    state === 'mastered' && flatStyles.percentMastered,
+                  ]}
+                >
+                  {toBanglaNum(percent)}%
+                </Text>
+              </View>
               <View style={flatStyles.barTrack}>
                 <View
                   style={[
@@ -104,18 +122,30 @@ export function FlatPath({
                   ]}
                 />
               </View>
-              <Text style={flatStyles.count}>
-                {toBanglaNum(masteredCount)}/{toBanglaNum(totalCount)} · {toBanglaNum(percent)}%
-              </Text>
             </View>
 
-            <View style={flatStyles.iconCell}>
-              <StatusIcon
-                mastered={isMastered}
-                started={hasStarted}
-                isCurrent={isCurrent}
-              />
-            </View>
+            <Pressable
+              accessibilityLabel={`${preset.label} শুরু করুন`}
+              onPress={() => onSelect(preset.id)}
+              style={({ pressed }) => [
+                flatStyles.playBtn,
+                state === 'mastered' && flatStyles.playBtnMastered,
+                state === 'current' && flatStyles.playBtnCurrent,
+                state === 'locked' && flatStyles.playBtnLocked,
+                pressed && flatStyles.playBtnPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  flatStyles.playIcon,
+                  state === 'mastered' && flatStyles.playIconMastered,
+                  state === 'current' && flatStyles.playIconCurrent,
+                  state === 'locked' && flatStyles.playIconLocked,
+                ]}
+              >
+                ▶
+              </Text>
+            </Pressable>
           </Pressable>
         );
       })}
@@ -131,9 +161,10 @@ const flatStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 64,
+    minHeight: 60,
     borderRadius: 12,
     paddingHorizontal: 10,
+    paddingVertical: 10,
     gap: 12,
     borderWidth: 1.5,
     borderColor: 'transparent',
@@ -144,6 +175,8 @@ const flatStyles = StyleSheet.create({
   rowPressed: {
     opacity: 0.7,
   },
+
+  // Glyph
   glyphCell: {
     width: 40,
     alignItems: 'center',
@@ -154,50 +187,84 @@ const flatStyles = StyleSheet.create({
     fontWeight: '900',
     color: '#111827',
   },
-  glyphMastered: {
-    color: '#047857',
-  },
-  glyphCurrent: {
-    color: '#f4512a',
-  },
-  glyphLocked: {
-    color: '#9ca3af',
-  },
+  glyphMastered: { color: '#047857' },
+  glyphCurrent: { color: '#f4512a' },
+  glyphLocked: { color: '#9ca3af' },
+
+  // Middle: title row + bar
   midCell: {
     flex: 1,
-    gap: 3,
+    gap: 6,
     justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
   },
   label: {
     fontSize: 14,
     fontWeight: '700',
     color: '#111827',
+    flexShrink: 1,
   },
-  labelLocked: {
+  labelLocked: { color: '#9ca3af' },
+  sep: {
+    fontSize: 11,
     color: '#9ca3af',
+    flexShrink: 0,
   },
+  percent: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    flexShrink: 0,
+  },
+  percentLocked: { color: '#9ca3af' },
+  percentMastered: { color: '#047857' },
+
+  // Status dots inline in title
+  dotMastered: { fontSize: 11, color: '#047857', fontWeight: '900', flexShrink: 0 },
+  dotCurrent: { fontSize: 10, color: '#f4512a', fontWeight: '900', flexShrink: 0 },
+  dotStarted: { fontSize: 11, color: '#f59e0b', flexShrink: 0 },
+  dotLocked: { fontSize: 11, color: '#9ca3af', flexShrink: 0 },
+
+  // Bar
   barTrack: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
     backgroundColor: '#e5ddc7',
     overflow: 'hidden',
   },
   barFill: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
   },
-  count: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  iconCell: {
-    width: 28,
+
+  // Play button — prominent square with border
+  playBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  iconMastered: { fontSize: 18, color: '#047857', fontWeight: '900' },
-  iconCurrent: { fontSize: 14, color: '#f4512a', fontWeight: '900' },
-  iconStarted: { fontSize: 18, color: '#f59e0b' },
-  iconLocked: { fontSize: 18, color: '#9ca3af' },
+  playBtnMastered: { borderColor: '#047857' },
+  playBtnCurrent: { borderColor: '#f4512a' },
+  playBtnLocked: { borderColor: '#d1c9b4' },
+  playBtnPressed: {
+    opacity: 0.55,
+    backgroundColor: '#f0ebe0',
+  },
+  playIcon: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '900',
+  },
+  playIconMastered: { color: '#047857' },
+  playIconCurrent: { color: '#f4512a' },
+  playIconLocked: { color: '#d1c9b4' },
 });
