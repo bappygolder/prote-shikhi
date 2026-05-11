@@ -1003,20 +1003,35 @@ function makeStyles(c: ColorTokens) {
     },
     pathHeatmapRow: {
       flexDirection: 'row',
-      justifyContent: 'flex-end',
+      alignItems: 'center',
+      gap: 8,
       marginBottom: 4,
     },
+    pathHeatmapLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: c.borderWarm,
+    },
     heatmapToggle: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: c.borderWarm,
       backgroundColor: c.bgSubtle,
     },
-    heatmapToggleText: {
-      fontSize: 18,
-      lineHeight: 22,
+    heatmapToggleIcon: {
+      fontSize: 13,
+      lineHeight: 17,
+    },
+    heatmapToggleLabel: {
+      color: c.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 0,
     },
     appFooter: {
       flexDirection: 'row',

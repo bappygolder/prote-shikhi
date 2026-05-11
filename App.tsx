@@ -1073,8 +1073,9 @@ function App() {
         {currentTab === 'path' ? (
           <View style={styles.pathScreen}>
             <View style={styles.pathHeatmapRow}>
+              <View style={styles.pathHeatmapLine} />
               <Pressable
-                accessibilityLabel={heatmapVisible ? 'হিটম্যাপ লুকান' : 'হিটম্যাপ দেখান'}
+                accessibilityLabel={heatmapVisible ? 'Hide map' : 'Show map'}
                 onPress={() => {
                   const next = !heatmapVisible;
                   setHeatmapVisible(next);
@@ -1082,7 +1083,8 @@ function App() {
                 }}
                 style={({ pressed }) => [styles.heatmapToggle, pressed && styles.buttonPressed]}
               >
-                <Text style={styles.heatmapToggleText}>{heatmapVisible ? '👁️' : '🙈'}</Text>
+                <Text style={styles.heatmapToggleIcon}>{heatmapVisible ? '👁️' : '👁️̸'}</Text>
+                <Text style={styles.heatmapToggleLabel}>{heatmapVisible ? 'Hide map' : 'Show map'}</Text>
               </Pressable>
             </View>
             {heatmapVisible ? (
@@ -1317,32 +1319,6 @@ function App() {
         )}
       </View>
 
-      <View style={styles.appFooter}>
-        <Text style={styles.footerText}>
-          Built by Bappy Golder, powered by{' '}
-          <Text
-            onPress={() => Linking.openURL('https://olab.com.au/')}
-            style={styles.footerLink}
-          >
-            oLab
-          </Text>
-        </Text>
-        <Text style={styles.footerVersion}>{APP_VERSION}</Text>
-        <Pressable
-          onPress={() => setShowInfoTooltip(!showInfoTooltip)}
-          style={styles.infoIconContainer}
-        >
-          <Text style={styles.infoIcon}>ⓘ</Text>
-        </Pressable>
-        {showInfoTooltip && (
-          <View style={styles.tooltipContainer}>
-            <Text style={styles.tooltipLabel}>LAST UPDATED</Text>
-            <Text style={styles.tooltipValue}>{LAST_UPDATED}</Text>
-            <View style={styles.tooltipDivider} />
-            <Text style={styles.tooltipVersion}>{APP_VERSION}</Text>
-          </View>
-        )}
-      </View>
 
       <View style={styles.bottomNav}>
         <Pressable
@@ -1587,7 +1563,14 @@ function App() {
 
               <View style={styles.footerContainer}>
                 <Text style={styles.footerText}>
-                  Built by Bappy Golder, powered by{' '}
+                  {'Built by '}
+                  <Text
+                    onPress={() => Linking.openURL('https://www.linkedin.com/in/bappygolder/')}
+                    style={styles.footerLink}
+                  >
+                    Bappy Golder
+                  </Text>
+                  {', powered by '}
                   <Text
                     onPress={() => Linking.openURL('https://olab.com.au/')}
                     style={styles.footerLink}
