@@ -853,6 +853,8 @@ function makeStyles(c: ColorTokens) {
       marginTop: 4,
     },
     menuScrollContent: {
+      flexGrow: 1,
+      justifyContent: 'space-between',
       paddingBottom: 24,
     },
     menuList: {
@@ -925,19 +927,19 @@ function makeStyles(c: ColorTokens) {
     footerContainer: {
       marginTop: 24,
       alignItems: 'center',
-      position: 'relative',
+      gap: 2,
     },
     footerVersion: {
       color: c.textDisabled,
-      fontSize: 12,
-      fontWeight: '700',
+      fontSize: 10,
+      fontWeight: '600',
       letterSpacing: 0.5,
+      marginTop: 4,
     },
     footerText: {
       color: c.textSecondary,
-      fontSize: 14,
+      fontSize: 12,
       fontWeight: '600',
-      marginBottom: 4,
     },
     poweredByRow: {
       flexDirection: 'row',

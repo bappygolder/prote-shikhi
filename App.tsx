@@ -1570,7 +1570,9 @@ function App() {
                   >
                     Bappy Golder
                   </Text>
-                  {', powered by '}
+                </Text>
+                <Text style={styles.footerText}>
+                  {'Powered by '}
                   <Text
                     onPress={() => Linking.openURL('https://olab.com.au/')}
                     style={styles.footerLink}
