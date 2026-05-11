@@ -26,6 +26,7 @@ export type CustomPresetCreatorProps = {
   onClose: () => void;
   onSave: (preset: CustomPreset) => void;
   preset?: CustomPreset;
+  onPractice?: (cards: LetterCard[]) => void;
 };
 
 type OrderedCard =
@@ -39,7 +40,7 @@ const LETTER_SECTIONS: { label: string; cards: LetterCard[] }[] = [
   { label: 'সংখ্যা', cards: NUMBER_CARDS },
 ];
 
-export function CustomPresetCreator({ visible, onClose, onSave, preset }: CustomPresetCreatorProps) {
+export function CustomPresetCreator({ visible, onClose, onSave, preset, onPractice }: CustomPresetCreatorProps) {
   const [name, setName] = useState('');
   const [orderedCards, setOrderedCards] = useState<OrderedCard[]>([]);
   const [wordInput, setWordInput] = useState('');
@@ -106,6 +107,10 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset }: Custom
       : { id: `custom-${Date.now()}`, label: name.trim(), cards, createdAt: new Date().toISOString() };
     onSave(saved);
     reset();
+  }
+
+  function handlePractice() {
+    onPractice?.(buildCards(orderedCards));
   }
 
   const canSave = name.trim().length > 0 && orderedCards.length > 0;
@@ -281,6 +286,29 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset }: Custom
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
+        {onPractice ? (
+          <View style={creatorStyles.footer}>
+            <Pressable
+              accessibilityLabel="অনুশীলন করুন"
+              disabled={orderedCards.length === 0}
+              onPress={handlePractice}
+              style={({ pressed }) => [
+                creatorStyles.practiceBtn,
+                orderedCards.length === 0 && creatorStyles.practiceBtnDisabled,
+                pressed && orderedCards.length > 0 && creatorStyles.practiceBtnPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  creatorStyles.practiceBtnText,
+                  orderedCards.length === 0 && creatorStyles.practiceBtnTextDisabled,
+                ]}
+              >
+                অনুশীলন করুন
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -490,5 +518,29 @@ const creatorStyles = StyleSheet.create({
     fontSize: 14,
     color: '#9ca3af',
     fontWeight: '700',
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5ddc7',
+  },
+  practiceBtn: {
+    backgroundColor: '#1d4ed8',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  practiceBtnDisabled: {
+    backgroundColor: '#e5ddc7',
+  },
+  practiceBtnPressed: { opacity: 0.8 },
+  practiceBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  practiceBtnTextDisabled: {
+    color: '#9ca3af',
   },
 });
