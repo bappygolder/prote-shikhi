@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   Alert,
   Animated,
@@ -1844,9 +1845,11 @@ function App() {
 
 export default function AppRoot() {
   return (
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 
