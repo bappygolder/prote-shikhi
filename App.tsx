@@ -593,6 +593,7 @@ function App() {
   const [presetResetCounts, setPresetResetCounts] = useState<Record<string, number>>({});
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showCreator, setShowCreator] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<CustomPreset | null>(null);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -1124,11 +1125,7 @@ function App() {
     );
   }
 
-  function handleSelectPreset(presetId: string) {
-    const preset: PracticePreset =
-      PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
-      customPresets.find((p) => p.id === presetId) ??
-      DEFAULT_PRESET;
+  function handleSelectPresetDirect(preset: PracticePreset) {
     const nextUnlockedCards = getUnlockedCards(preset.cards, progress);
     const nextCards = getEffectivePracticeCards(
       selectedPracticeList,
@@ -1136,12 +1133,19 @@ function App() {
       progress,
       nextUnlockedCards,
     );
-
     setSelectedPresetId(preset.id);
     setSession(initSessionState(preset.cards, progress));
     setCurrentCardId(nextCards[0]?.id ?? preset.cards[0].id);
     setCurrentTab('practice');
     handleCloseMenu();
+  }
+
+  function handleSelectPreset(presetId: string) {
+    const preset: PracticePreset =
+      PRACTICE_PRESETS.find((practicePreset) => practicePreset.id === presetId) ??
+      customPresets.find((p) => p.id === presetId) ??
+      DEFAULT_PRESET;
+    handleSelectPresetDirect(preset);
   }
 
   function handleSaveCustomPreset(preset: CustomPreset) {
@@ -1151,6 +1155,34 @@ function App() {
 
   function handleDeleteCustomPreset(presetId: string) {
     setCustomPresets((prev) => prev.filter((p) => p.id !== presetId));
+  }
+
+  function handleEditCustomPreset(preset: CustomPreset) {
+    setEditingPreset(preset);
+  }
+
+  function handleUpdateCustomPreset(updated: CustomPreset) {
+    setCustomPresets((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setEditingPreset(null);
+  }
+
+  function handleCreatorSave(preset: CustomPreset) {
+    if (editingPreset) {
+      handleUpdateCustomPreset(preset);
+    } else {
+      handleSaveCustomPreset(preset);
+    }
+  }
+
+  function handlePracticeFromCreator(cards: LetterCard[]) {
+    const tempPreset: PracticePreset = {
+      id: `temp-${Date.now()}`,
+      label: 'অনুশীলন',
+      cards,
+    };
+    setShowCreator(false);
+    setEditingPreset(null);
+    handleSelectPresetDirect(tempPreset);
   }
 
   function handleChooseLetter(card: LetterCard) {
@@ -1245,6 +1277,7 @@ function App() {
                   onSelect={handleSelectPreset}
                   onCreate={() => setShowCreator(true)}
                   onDelete={handleDeleteCustomPreset}
+                  onEdit={handleEditCustomPreset}
                 />
               )}
             </ScrollView>
@@ -1826,9 +1859,11 @@ function App() {
         onNavigate={handleShowPresetDetail}
       />
       <CustomPresetCreator
-        visible={showCreator}
-        onClose={() => setShowCreator(false)}
-        onSave={handleSaveCustomPreset}
+        visible={showCreator || editingPreset !== null}
+        preset={editingPreset ?? undefined}
+        onClose={() => { setShowCreator(false); setEditingPreset(null); }}
+        onSave={handleCreatorSave}
+        onPractice={handlePracticeFromCreator}
       />
       {isSetComplete ? (
         <VictoryScreen
