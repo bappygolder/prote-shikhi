@@ -853,9 +853,7 @@ function makeStyles(c: ColorTokens) {
       marginTop: 4,
     },
     menuScrollContent: {
-      flexGrow: 1,
-      justifyContent: 'space-between',
-      paddingBottom: 24,
+      paddingBottom: 16,
     },
     menuList: {
       gap: 0,
