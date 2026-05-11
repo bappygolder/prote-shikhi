@@ -386,7 +386,7 @@ test('applyActiveSetOnCorrect: first counted-correct grows from 2 → 3', () => 
   const session = initSessionState(path, {});
   assert.equal(session.activeSet.length, ACTIVE_SET_START);
   const cardProgress = getProgressForCard({}, 'card-1');
-  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path);
+  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path, {});
   assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
   assert.equal(next.activeSet[2], 'card-3');
 });
@@ -398,7 +398,7 @@ test('applyActiveSetOnCorrect: subsequent counted-corrects do NOT grow further',
     activeSet: ['card-1', 'card-2', 'card-3'],
   };
   const cardProgress = getProgressForCard({}, 'card-1');
-  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path);
+  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path, {});
   assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
   assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
 });
@@ -409,7 +409,7 @@ test('applyActiveSetOnMastery: mastered card removed; next path card appended', 
     ...initSessionState(path, {}),
     activeSet: ['card-1', 'card-2', 'card-3'],
   };
-  const next = applyActiveSetOnMastery(session, 'card-2', path);
+  const next = applyActiveSetOnMastery(session, 'card-2', path, {});
   assert.ok(!next.activeSet.includes('card-2'), 'mastered card removed');
   assert.equal(next.activeSet.length, 3);
   assert.equal(next.activeSet[next.activeSet.length - 1], 'card-4');

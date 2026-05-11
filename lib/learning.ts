@@ -343,13 +343,18 @@ export function initSessionState(
 function nextUnenteredFromPath(
   path: LetterCard[],
   state: SessionState,
+  progress: ProgressByCard,
 ): LetterCard | null {
   const used = new Set<string>(state.activeSet);
   if (state.prePushedActiveSet) {
     for (const id of state.prePushedActiveSet) used.add(id);
   }
   for (const card of path) {
-    if (!used.has(card.id)) return card;
+    // Skip cards already in the active set AND already-mastered cards so they
+    // never cycle back into the active set after being retired.
+    if (!used.has(card.id) && !getProgressForCard(progress, card.id).mastered) {
+      return card;
+    }
   }
   return null;
 }
@@ -363,11 +368,12 @@ export function applyActiveSetOnCorrect(
   _cardId: string,
   _cardProgress: LetterProgress,
   path: LetterCard[],
+  progress: ProgressByCard,
 ): SessionState {
   if (state.inStruggleMode) return state;
   if (state.activeSet.length >= ACTIVE_SET_STEADY) return state;
 
-  const next = nextUnenteredFromPath(path, state);
+  const next = nextUnenteredFromPath(path, state, progress);
   if (!next) return state;
 
   return {
@@ -380,16 +386,18 @@ export function applyActiveSetOnMastery(
   state: SessionState,
   masteredCardId: string,
   path: LetterCard[],
+  progress: ProgressByCard,
 ): SessionState {
   const remaining = state.activeSet.filter((id) => id !== masteredCardId);
   // The just-mastered card has left the active set but must NOT be re-picked
   // here as the "next un-entered" card. Inject it into the search state's
   // activeSet so nextUnenteredFromPath skips it.
+  // Passing progress ensures previously-mastered cards are also never cycled back.
   let nextActive = remaining;
   const next = nextUnenteredFromPath(path, {
     ...state,
     activeSet: [...remaining, masteredCardId],
-  });
+  }, progress);
   if (next) nextActive = [...remaining, next.id];
 
   return {
@@ -653,4 +661,27 @@ export function chooseNextCard(
   }
 
   return weightedRandomPick(filtered, rng);
+}
+
+// ---------------------------------------------------------------------------
+// Global progress — per-click tracking across all cards in the active path
+// ---------------------------------------------------------------------------
+
+export function computeGlobalProgress(
+  progress: ProgressByCard,
+  cards: LetterCard[],
+): { earned: number; max: number; percent: number } {
+  const PER_LETTER_MAX = WARMUP_PER_CARD + MASTERY_TARGET;
+  let earned = 0;
+  for (const card of cards) {
+    const p = getProgressForCard(progress, card.id);
+    if (p.mastered) {
+      earned += PER_LETTER_MAX;
+    } else {
+      earned += Math.min(p.correctCount, WARMUP_PER_CARD) + p.streak;
+    }
+  }
+  const max = cards.length * PER_LETTER_MAX;
+  const percent = max > 0 ? Math.min(100, Math.round((earned / max) * 100)) : 0;
+  return { earned, max, percent };
 }
