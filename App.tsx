@@ -19,7 +19,6 @@ import {
 
 import {
   LETTER_CARDS,
-  MASTERY_TARGET,
   PRACTICE_PRESETS,
   type LetterCard,
   type PracticePreset,
@@ -27,27 +26,18 @@ import {
 import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
 import { FlatPath, PathSwitcher, PresetDetailModal, PresetPath, type PathView } from './components/path';
 import {
-  applyActiveSetOnCorrect,
-  applyActiveSetOnMastery,
   applyGrade,
   chooseNextCard,
   computeGlobalProgress,
-  eligibleForSprinkle,
   getProgressForCard,
   getUnlockedCards,
   initSessionState,
-  isPathComplete,
   isPresetComplete,
-  maybeEnterStruggleMode,
-  maybeExitStruggleMode,
   migrateProgress,
-  pushBounded,
   resetCards,
-  tickPostMasteryCounters,
-  tickSprinkleCooldowns,
-  RECENT_WINDOW,
-  SPRINKLE_COOLDOWN,
-  WARMUP_PER_CARD,
+  tickCycle,
+  CORRECT_PER_LEVEL,
+  SESSION_MASTERY_LEVEL,
   type ProgressByCard,
   type ProgressState,
   type SessionState,
@@ -149,12 +139,10 @@ function formatBanglaDate(isoString: string | null): string {
 }
 
 function getMasteryPercent(progress: ProgressByCard, cardId: string) {
-  const cardProgress = getProgressForCard(progress, cardId);
-
-  return Math.min(
-    100,
-    Math.round((cardProgress.correctCount / MASTERY_TARGET) * 100),
-  );
+  const p = getProgressForCard(progress, cardId);
+  const earned = p.level * CORRECT_PER_LEVEL + p.levelCorrect;
+  const max = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL;
+  return Math.min(100, Math.round((earned / max) * 100));
 }
 
 function getDisplayLetter(card: LetterCard) {
@@ -419,7 +407,7 @@ function App() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [heatmapVisible, setHeatmapVisible] = useState(true);
-  const [pathView, setPathView] = useState<PathView>('zigzag');
+  const [pathView, setPathView] = useState<PathView>('flat');
   const [statsModalCard, setStatsModalCard] = useState<LetterCard | null>(null);
   const [detailPreset, setDetailPreset] = useState<PracticePreset | null>(null);
   const [presetResetCounts, setPresetResetCounts] = useState<Record<string, number>>({});
@@ -475,7 +463,7 @@ function App() {
             setProgress(state.byCard);
             setSelectedPresetId(presetToUse.id);
             setSession(restoredSession);
-            setCurrentCardId(restoredSession.activeSet[0] ?? presetToUse.cards[0].id);
+            setCurrentCardId(restoredSession.cycleQueue[restoredSession.cycleIndex] ?? presetToUse.cards[0].id);
           } catch (parseError) {
             console.warn('[porashikhi] Could not migrate stored progress, starting fresh.', parseError);
           }
@@ -525,7 +513,7 @@ function App() {
 
     // Debounce writes so a flurry of grade taps coalesces into one save.
     const timer = setTimeout(() => {
-      const toPersist: ProgressState = { schemaVersion: 3, byCard: progress };
+      const toPersist: ProgressState = { schemaVersion: 4, byCard: progress };
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist)).catch(() => {
         // Keep the trainer responsive even if storage fails.
       });
@@ -793,147 +781,46 @@ function App() {
   }
 
   function handleGrade(wasCorrect: boolean) {
-    const wasPathCompleteBefore = isPathComplete(selectedPresetCards, progress);
-    const current = getProgressForCard(progress, currentCard.id);
-    const gradedProgress = applyGrade(progress, currentCard.id, wasCorrect);
-    // Spec §7: every grade bumps cardsShownSinceMastered for all mastered cards.
-    const nextProgress = tickPostMasteryCounters(gradedProgress);
-    const nextCardProgress = getProgressForCard(nextProgress, currentCard.id);
+    const wasPathCompleteBefore = isPresetComplete(selectedPresetCards, progress);
 
-    const wasFirstCountedCorrect =
-      wasCorrect &&
-      current.correctCount === WARMUP_PER_CARD &&
-      nextCardProgress.correctCount === WARMUP_PER_CARD + 1;
-    const wasJustMastered = !current.mastered && nextCardProgress.mastered;
+    // Apply grade — updates level, levelCorrect, wrongFlag
+    const gradedProgress = applyGrade(progress, currentCard.id, wasCorrect, session.currentCycleIndex);
+
+    // Advance cycle position
+    const nextCycleWrongs = wasCorrect
+      ? session.currentCycleWrongs
+      : session.currentCycleWrongs + 1;
 
     let nextSession: SessionState = {
       ...session,
-      recentGrades: pushBounded(
-        session.recentGrades,
-        wasCorrect ? 'c' : 'w',
-        RECENT_WINDOW,
-      ),
-      consecutiveCorrectInSession: wasCorrect
-        ? session.consecutiveCorrectInSession + 1
-        : 0,
+      cycleIndex: session.cycleIndex + 1,
+      currentCycleWrongs: nextCycleWrongs,
+      cardsShown: session.cardsShown + 1,
+      previousCardId: currentCard.id,
     };
 
-    let progressForSelection = nextProgress;
-    const beforeUnlockSize = nextSession.activeSet.length;
-
-    if (wasFirstCountedCorrect) {
-      nextSession = applyActiveSetOnCorrect(
-        nextSession,
-        currentCard.id,
-        nextCardProgress,
-        selectedPresetCards,
-        progressForSelection,
-      );
-    }
-    if (wasJustMastered) {
-      nextSession = applyActiveSetOnMastery(
-        nextSession,
-        currentCard.id,
-        selectedPresetCards,
-        progressForSelection,
-      );
+    // End of cycle: build next cycle
+    if (nextSession.cycleIndex >= nextSession.cycleQueue.length) {
+      nextSession = tickCycle(nextSession, gradedProgress, selectedPresetCards);
     }
 
-    // Reset newcomer counters for any newly-appended active card.
-    if (nextSession.activeSet.length > beforeUnlockSize) {
-      const entrantId = nextSession.activeSet[nextSession.activeSet.length - 1];
-      const entrantProgress = getProgressForCard(progressForSelection, entrantId);
-      progressForSelection = {
-        ...progressForSelection,
-        [entrantId]: {
-          ...entrantProgress,
-          attemptsSinceEnteringActive: 0,
-          enteredActiveAt: new Date().toISOString(),
-        },
-      };
-    }
+    // Next card is the current position in the cycle queue
+    let nextCardId =
+      nextSession.cycleQueue[nextSession.cycleIndex] ??
+      selectedPresetCards.find(
+        (c) => !getProgressForCard(gradedProgress, c.id).mastered,
+      )?.id ??
+      selectedPresetCards[0].id;
 
-    nextSession = wasCorrect
-      ? maybeExitStruggleMode(nextSession, selectedPresetCards)
-      : maybeEnterStruggleMode(
-          nextSession,
-          progressForSelection,
-          selectedPresetCards,
-        );
-
-    // On the default unlocked list, drive selection from the new SessionState.
-    // On the other practice lists, preserve v1 behavior (no session) so the
-    // visible behavior outside the unlocked flow is unchanged.
-    let chosen;
-    if (selectedPracticeList === 'unlocked') {
-      chosen = chooseNextCard(
-        selectedPresetCards,
-        progressForSelection,
-        currentCard.id,
-        nextSession,
-      );
-    } else {
-      const nextUnlockedCards = getUnlockedCards(
-        selectedPresetCards,
-        progressForSelection,
-      );
-      const nextPracticeCards = getEffectivePracticeCards(
-        selectedPracticeList,
-        selectedPresetCards,
-        progressForSelection,
-        nextUnlockedCards,
-      );
-      chosen = chooseNextCard(
-        nextPracticeCards,
-        progressForSelection,
-        currentCard.id,
-      );
-    }
-
-    // Bump chosen card's attemptsSinceEnteringActive (spec §10).
-    const chosenProgress = getProgressForCard(progressForSelection, chosen.id);
-
-    // Sprinkle bookkeeping (spec §12). A mastered card that surfaces is the
-    // sprinkle event; reset its cooldown. Tick other mastered cards' cooldowns.
-    const chosenIsSprinkle =
-      chosenProgress.mastered &&
-      eligibleForSprinkle(chosenProgress, nextSession);
-    const sprinkledChosenProgress = chosenIsSprinkle
-      ? { ...chosenProgress, sprinkleCooldown: SPRINKLE_COOLDOWN }
-      : chosenProgress;
-
-    const tickedProgress = tickSprinkleCooldowns(
-      progressForSelection,
-      chosen.id,
-    );
-
-    const finalProgress: ProgressByCard = {
-      ...tickedProgress,
-      [chosen.id]: {
-        ...sprinkledChosenProgress,
-        attemptsSinceEnteringActive:
-          sprinkledChosenProgress.attemptsSinceEnteringActive + 1,
-      },
-    };
-
-    nextSession = {
-      ...nextSession,
-      twoBackCardId: nextSession.previousCardId,
-      previousCardId: chosen.id,
-      cardsShown: nextSession.cardsShown + 1,
-    };
-
-    if (
-      isPathComplete(selectedPresetCards, finalProgress) &&
-      !wasPathCompleteBefore
-    ) {
+    // Path complete detection
+    if (isPresetComplete(selectedPresetCards, gradedProgress) && !wasPathCompleteBefore) {
       console.log('[porashikhi] path complete:', selectedPreset.id);
     }
 
     playFeedback(wasCorrect);
-    setProgress(finalProgress);
+    setProgress(gradedProgress);
     setSession(nextSession);
-    setCurrentCardId(chosen.id);
+    setCurrentCardId(nextCardId);
     setSessionStats((c) => ({
       attempts: c.attempts + 1,
       correct: c.correct + (wasCorrect ? 1 : 0),
@@ -1134,6 +1021,7 @@ function App() {
                   progress={progress}
                   currentPresetId={currentPathPresetId}
                   onDetail={handleShowPresetDetail}
+                  onSelect={handleSelectPreset}
                   onLongPressReset={handleResetPreset}
                 />
               )}
@@ -1189,10 +1077,10 @@ function App() {
               </View>
               <View style={[styles.stripZone, { opacity: currentProgress.correctCount === 0 ? 0.1 : 1 }]}>
                 <LetterProgressMark
-                  completed={currentProgress.correctCount}
+                  completed={currentMasteryPercent}
                   letter={currentDisplayLetter}
                   percent={currentMasteryPercent}
-                  total={MASTERY_TARGET}
+                  total={100}
                 />
               </View>
               {gradeFeedback ? (
@@ -1651,8 +1539,8 @@ function App() {
                     <Text style={styles.statsModalValue}>{toBanglaNumber(p.wrongCount)}</Text>
                   </View>
                   <View style={styles.statsModalRow}>
-                    <Text style={styles.statsModalLabel}>সেরা ধারা</Text>
-                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.bestStreak)}</Text>
+                    <Text style={styles.statsModalLabel}>স্তর</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.level)}</Text>
                   </View>
                   <View style={styles.statsModalRow}>
                     <Text style={styles.statsModalLabel}>দিন চর্চা</Text>

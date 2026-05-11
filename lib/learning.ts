@@ -458,7 +458,7 @@ export function computeGlobalProgress(
   progress: ProgressByCard,
   cards: LetterCard[],
 ): { earned: number; max: number; percent: number } {
-  const PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL;
+  const PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL;
 
   let earned = 0;
   for (const card of cards) {

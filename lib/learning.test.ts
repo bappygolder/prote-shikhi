@@ -426,14 +426,14 @@ test('computeGlobalProgress: 0% when no correct answers', () => {
 });
 
 test('computeGlobalProgress: 100% when all cards have earned PER_LETTER_EFFECTIVE_MAX points', () => {
-  // PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL = 3 * 5 = 15
-  // A card at level=SESSION_MASTERY_LEVEL+1 earns (2+1)*5 = 15, which equals the max per letter.
+  // PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL = 2 * 5 = 10
+  // A card at level=SESSION_MASTERY_LEVEL (2), levelCorrect=0 earns 2*5+0 = 10 = PER_LETTER_EFFECTIVE_MAX.
   const path = makePath(3);
   const progress: ProgressByCard = {};
   for (const card of path) {
     progress[card.id] = {
       ...getProgressForCard({}, card.id),
-      level: SESSION_MASTERY_LEVEL + 1, // level 3 → earns 15 = PER_LETTER_EFFECTIVE_MAX
+      level: SESSION_MASTERY_LEVEL, // level 2 → earns 10 = PER_LETTER_EFFECTIVE_MAX
       levelCorrect: 0,
       mastered: true,
     };
@@ -443,11 +443,11 @@ test('computeGlobalProgress: 100% when all cards have earned PER_LETTER_EFFECTIV
 });
 
 test('computeGlobalProgress: mid-session partial calculation', () => {
-  // PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL = 3 * 5 = 15
+  // PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL = 2 * 5 = 10
   // 1 card at level=1, levelCorrect=2 → earned = 1*5 + 2 = 7
   // 1 card at level=0, levelCorrect=0 → earned = 0
-  // max = 2 * 15 = 30
-  // percent = round(7/30 * 100) = round(23.33) = 23
+  // max = 2 * 10 = 20
+  // percent = round(7/20 * 100) = round(35) = 35
   const path = makePath(2);
   const progress: ProgressByCard = {
     'card-1': { ...getProgressForCard({}, 'card-1'), level: 1, levelCorrect: 2 },
@@ -455,8 +455,8 @@ test('computeGlobalProgress: mid-session partial calculation', () => {
   };
   const result = computeGlobalProgress(progress, path);
   assert.equal(result.earned, 7);
-  assert.equal(result.max, 30);
-  assert.equal(result.percent, 23);
+  assert.equal(result.max, 20);
+  assert.equal(result.percent, 35);
 });
 
 test('computeGlobalProgress: never exceeds 100%', () => {
