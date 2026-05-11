@@ -1708,6 +1708,7 @@ function App() {
         onClose={handleClosePresetDetail}
         onPractice={handlePracticeFromDetail}
         onReset={handleResetFromDetail}
+        onNavigate={handleShowPresetDetail}
       />
     </SafeAreaView>
   );
