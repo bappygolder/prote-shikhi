@@ -7,6 +7,7 @@ import {
   Animated,
   Easing,
   Linking,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -53,6 +54,7 @@ import {
 const STORAGE_KEY = 'porashikhi.progress.v1';
 const LAST_TAB_STORAGE_KEY = 'porashikhi.lastTab.v1';
 const HEATMAP_VISIBLE_KEY = 'porashikhi.ui.heatmap.visible.v1';
+const SELECTED_PRESET_STORAGE_KEY = 'porashikhi.selectedPreset.v1';
 const LEGACY_STORAGE_KEY = 'bornomala.progress.v1';
 const LEGACY_LAST_TAB_STORAGE_KEY = 'bornomala.lastTab.v1';
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -132,6 +134,14 @@ const initialSessionStats: SessionStats = {
 
 function toBanglaNumber(value: number | string) {
   return String(value).replace(/\d/g, (digit) => BANGLA_DIGITS[Number(digit)]);
+}
+
+function formatBanglaDate(isoString: string | null): string {
+  if (!isoString) return 'এখনো দেখা হয়নি';
+  const d = new Date(isoString);
+  return toBanglaNumber(
+    `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`,
+  );
 }
 
 function getMasteryPercent(progress: ProgressByCard, cardId: string) {
@@ -481,6 +491,7 @@ function App() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [heatmapVisible, setHeatmapVisible] = useState(true);
+  const [statsModalCard, setStatsModalCard] = useState<LetterCard | null>(null);
   const ambientMotion = useRef(new Animated.Value(0)).current;
   const cardEntrance = useRef(new Animated.Value(1)).current;
   const feedbackBurst = useRef(new Animated.Value(0)).current;
@@ -495,8 +506,9 @@ function App() {
       AsyncStorage.getItem(LEGACY_STORAGE_KEY),
       AsyncStorage.getItem(LEGACY_LAST_TAB_STORAGE_KEY),
       AsyncStorage.getItem(HEATMAP_VISIBLE_KEY),
+      AsyncStorage.getItem(SELECTED_PRESET_STORAGE_KEY),
     ])
-      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap]) => {
+      .then(async ([savedProgress, savedTab, legacyProgress, legacyTab, savedHeatmap, savedPresetId]) => {
         if (!isMounted) {
           return;
         }
@@ -516,12 +528,21 @@ function App() {
           await AsyncStorage.removeItem(LEGACY_LAST_TAB_STORAGE_KEY).catch(() => {});
         }
 
+        let presetToUse = DEFAULT_PRESET;
+        if (typeof savedPresetId === 'string') {
+          const found = PRACTICE_PRESETS.find((p) => p.id === savedPresetId);
+          if (found) presetToUse = found;
+        }
+
         if (progressToUse) {
           try {
             const parsed: unknown = JSON.parse(progressToUse);
             const state = migrateProgress(parsed);
+            const restoredSession = initSessionState(presetToUse.cards, state.byCard);
             setProgress(state.byCard);
-            setSession(initSessionState(DEFAULT_PRESET.cards, state.byCard));
+            setSelectedPresetId(presetToUse.id);
+            setSession(restoredSession);
+            setCurrentCardId(restoredSession.activeSet[0] ?? presetToUse.cards[0].id);
           } catch (parseError) {
             console.warn('[porashikhi] Could not migrate stored progress, starting fresh.', parseError);
           }
@@ -576,6 +597,14 @@ function App() {
       // Tab persistence is a nice-to-have; ignore failures.
     });
   }, [currentTab, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    AsyncStorage.setItem(SELECTED_PRESET_STORAGE_KEY, selectedPresetId).catch(() => {});
+  }, [selectedPresetId, isLoaded]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -1285,9 +1314,9 @@ function App() {
 
                 return (
                   <Pressable
-                    accessibilityLabel={`${card.letter} প্র্যাকটিস করুন`}
+                    accessibilityLabel={`${card.letter} এর তথ্য দেখুন`}
                     key={card.id}
-                    onPress={() => handleChooseLetter(card)}
+                    onPress={() => setStatsModalCard(card)}
                     onLongPress={() => handleResetLetter(card)}
                     delayLongPress={400}
                     style={({ pressed }) => [
@@ -1587,6 +1616,90 @@ function App() {
           </Animated.View>
         </View>
       ) : null}
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={statsModalCard !== null}
+        onRequestClose={() => setStatsModalCard(null)}
+      >
+        <Pressable
+          style={styles.statsModalBackdrop}
+          onPress={() => setStatsModalCard(null)}
+        >
+          <Pressable style={styles.statsModal} onPress={() => {}}>
+            {statsModalCard !== null && (() => {
+              const p = getProgressForCard(progress, statsModalCard.id);
+              const daysCount = new Set(p.dayHistory).size;
+              const displayLetter = getDisplayLetter(statsModalCard);
+              return (
+                <>
+                  <Text style={styles.statsModalLetter}>{displayLetter}</Text>
+                  <View style={styles.statsModalDivider} />
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>মোট চেষ্টা</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.seenCount)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>সঠিক</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.correctCount)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>ভুল</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.wrongCount)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>সেরা ধারা</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(p.bestStreak)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>দিন চর্চা</Text>
+                    <Text style={styles.statsModalValue}>{toBanglaNumber(daysCount)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>প্রথম দেখা</Text>
+                    <Text style={styles.statsModalValue}>{formatBanglaDate(p.firstSeenAt)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>শেষ দেখা</Text>
+                    <Text style={styles.statsModalValue}>{formatBanglaDate(p.lastSeenAt)}</Text>
+                  </View>
+                  <View style={styles.statsModalRow}>
+                    <Text style={styles.statsModalLabel}>শেখা হয়েছে?</Text>
+                    <Text style={[styles.statsModalValue, p.mastered && styles.statsModalMastered]}>
+                      {p.mastered ? 'হ্যাঁ ✓' : 'না'}
+                    </Text>
+                  </View>
+                  <View style={styles.statsModalDivider} />
+                  <Pressable
+                    accessibilityLabel={`${statsModalCard.letter} চর্চা করুন`}
+                    onPress={() => {
+                      handleChooseLetter(statsModalCard);
+                      setStatsModalCard(null);
+                    }}
+                    style={({ pressed }) => [
+                      styles.statsModalPracticeBtn,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text style={styles.statsModalPracticeBtnText}>এখন চর্চা করো</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="বন্ধ করুন"
+                    onPress={() => setStatsModalCard(null)}
+                    style={({ pressed }) => [
+                      styles.statsModalCloseBtn,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text style={styles.statsModalCloseBtnText}>বন্ধ করো</Text>
+                  </Pressable>
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
