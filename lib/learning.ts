@@ -1,99 +1,70 @@
-import { MASTERY_TARGET, type LetterCard } from '../data/banglaLetters';
+import { type LetterCard } from '../data/banglaLetters';
 
-export { MASTERY_TARGET } from '../data/banglaLetters';
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-export const RECENT_WINDOW = 6;
-export const WARMUP_PER_CARD = 5;
-export const PENALTY_MAX = 16;
-export const PENALTY_HALVE_ON_CORRECT = true;
+export const LEVEL_COUNT = 4;
+export const CORRECT_PER_LEVEL = 5;
+export const SESSION_MASTERY_LEVEL = 2;
+export const SPACES_INIT = 2;
+export const SPACES_MIN = 2;
+export const SPACES_MAX = 4;
+export const CYCLES_TO_GROW = 3;
+export const NEW_CARD_PRIORITY_CYCLES = 3;
+export const CYCLE_WRONGS_TO_SHRINK = 2;
 
-// Active-set sizing (spec §6).
-// ACTIVE_SET_START raised 2→3 (DIAG-01): starting with 2 + WARMUP_PER_CARD=5
-// means the 3rd card never enters during early sessions — learner sees only 2
-// letters for the entire warm-up period. Starting with 3 gives immediate variety.
-export const ACTIVE_SET_START = 3;
-export const ACTIVE_SET_STEADY = 3;
-export const ACTIVE_SET_STRUGGLE = 2;
-
-// Struggle-mode transitions.
-export const STRUGGLE_WRONG_THRESHOLD = 2;
-export const STRUGGLE_RECOVERY_STREAK = 6;
-
-// Newcomer boost — visibility score additive term that decays linearly.
-export const NEW_CARD_BOOST_DURATION = 8;
-export const NEW_CARD_BOOST_WEIGHT = 8;
-
-// Visibility-score weights (spec §8).
-export const W_BASE = 1;
-export const W_RECENT_MISS = 4;
-export const W_PENALTY = 1.5;
-export const W_STREAK_GAP = 0.3;
-export const W_FRESHNESS = 0.5;
-export const W_SPRINKLE = 2.5;
-
-// Sprinkle (post-mastery review) — spec §6, §12.
-export const SPRINKLE_EVERY_N_CARDS = 7;
-export const SPRINKLE_COOLDOWN = 15;
-export const NEWLY_MASTERED_QUIET_PERIOD = 10;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export type LetterProgress = {
-  // existing — preserved
+  // Core stats
   correctCount: number;
   wrongCount: number;
   seenCount: number;
   mastered: boolean;
   lastSeenAt: string | null;
-
-  // streak (mastery signal)
-  streak: number;
-  bestStreak: number;
-
-  // penalty / mistake dynamics
-  penalty: number;
-  consecutiveMistakes: number;
-
-  // recency / selection signal
-  recentResults: Array<'c' | 'w'>;
-
-  // active-set lifecycle
-  attemptsSinceEnteringActive: number;
-  enteredActiveAt: string | null;
-  cardsShownSinceMastered: number;
-
-  // interleaving
-  sprinkleCooldown: number;
-
-  // reserved (defer; not populated yet)
-  timeSpentMs: number;
-
-  // timestamp
   firstSeenAt: string | null;
-
-  // days practised (ISO date strings, one per unique calendar day)
   dayHistory: string[];
+
+  // Level system
+  level: number;
+  levelCorrect: number;
+  wrongFlag: boolean;
+  lastShownCycleIndex: number;
 };
 
 export type ProgressByCard = Record<string, LetterProgress>;
 
 export type ProgressState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   byCard: ProgressByCard;
 };
 
 export type SessionState = {
   startedAt: string;
   cardsShown: number;
-  recentGrades: Array<'c' | 'w'>;
-  inStruggleMode: boolean;
-  consecutiveCorrectInSession: number;
+
+  // Memory spaces
+  spaces: string[];
+  waitingPool: string[];
+  graduatedPool: string[];
+
+  // Cycle tracking
+  cycleQueue: string[];
+  cycleIndex: number;
+  cycleCount: number;
+  cycleHistory: string[][];
+  currentCycleIndex: number;
+  currentCycleWrongs: number;
+
   previousCardId: string | null;
-  twoBackCardId: string | null;
-  activeSet: string[];
-  prePushedActiveSet: string[] | null;
 };
 
-const INITIAL_UNLOCK_COUNT = 5;
-const UNLOCK_STEP = 2;
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
 
 function defaultLetterProgress(): LetterProgress {
   return {
@@ -102,20 +73,39 @@ function defaultLetterProgress(): LetterProgress {
     seenCount: 0,
     mastered: false,
     lastSeenAt: null,
-    streak: 0,
-    bestStreak: 0,
-    penalty: 0,
-    consecutiveMistakes: 0,
-    recentResults: [],
-    attemptsSinceEnteringActive: 0,
-    enteredActiveAt: null,
-    cardsShownSinceMastered: 0,
-    sprinkleCooldown: 0,
-    timeSpentMs: 0,
     firstSeenAt: null,
     dayHistory: [],
+    level: 0,
+    levelCorrect: 0,
+    wrongFlag: false,
+    lastShownCycleIndex: 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function fisherYates<T>(arr: T[], rng: () => number): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Core progress accessors
+// ---------------------------------------------------------------------------
 
 export function getProgressForCard(
   progress: ProgressByCard,
@@ -131,7 +121,6 @@ export function isPresetComplete(
   return cards.every((card) => getProgressForCard(progress, card.id).mastered);
 }
 
-// Spec §11 — true when every card in the path is mastered.
 export function isPathComplete(
   path: LetterCard[],
   progress: ProgressByCard,
@@ -143,9 +132,7 @@ export function resetCards(
   progress: ProgressByCard,
   cardIds: string[],
 ): ProgressByCard {
-  if (cardIds.length === 0) {
-    return progress;
-  }
+  if (cardIds.length === 0) return progress;
   const next = { ...progress };
   for (const id of cardIds) {
     delete next[id];
@@ -153,16 +140,25 @@ export function resetCards(
   return next;
 }
 
-export function pushBounded<T>(arr: T[], item: T, max: number): T[] {
-  const next = arr.length >= max ? arr.slice(arr.length - max + 1) : arr.slice();
-  next.push(item);
-  return next;
+export function getUnlockedCards(
+  cards: LetterCard[],
+  progress: ProgressByCard,
+): LetterCard[] {
+  const unmastered = cards.filter(
+    (c) => !getProgressForCard(progress, c.id).mastered,
+  );
+  return unmastered.length > 0 ? unmastered : cards;
 }
+
+// ---------------------------------------------------------------------------
+// applyGrade
+// ---------------------------------------------------------------------------
 
 export function applyGrade(
   progress: ProgressByCard,
   cardId: string,
   wasCorrect: boolean,
+  currentCycleIndex = 0,
 ): ProgressByCard {
   const current = getProgressForCard(progress, cardId);
   const now = new Date().toISOString();
@@ -176,16 +172,20 @@ export function applyGrade(
       ? current.dayHistory
       : [...current.dayHistory, today];
 
+  const lastShownCycleIndex = currentCycleIndex;
+
   if (wasCorrect) {
     const correctCount = current.correctCount + 1;
-    const isWarmupActive = correctCount <= WARMUP_PER_CARD;
-    const streak = isWarmupActive ? current.streak : current.streak + 1;
-    const bestStreak = streak > current.bestStreak ? streak : current.bestStreak;
-    const mastered = current.mastered || streak >= MASTERY_TARGET;
-    const penalty = PENALTY_HALVE_ON_CORRECT
-      ? Math.floor(current.penalty / 2)
-      : Math.max(0, current.penalty - 1);
-    const recentResults = pushBounded(current.recentResults, 'c', RECENT_WINDOW);
+    const newLevelCorrect = current.levelCorrect + 1;
+    let level = current.level;
+    let levelCorrect = newLevelCorrect;
+
+    if (newLevelCorrect >= CORRECT_PER_LEVEL) {
+      level = current.level + 1;
+      levelCorrect = 0;
+    }
+
+    const mastered = current.mastered || level >= SESSION_MASTERY_LEVEL;
 
     return {
       ...progress,
@@ -197,410 +197,225 @@ export function applyGrade(
         mastered,
         lastSeenAt,
         firstSeenAt,
-        streak,
-        bestStreak,
-        penalty,
-        consecutiveMistakes: 0,
-        recentResults,
         dayHistory,
+        level,
+        levelCorrect,
+        wrongFlag: false,
+        lastShownCycleIndex,
       },
     };
   }
 
-  const wrongCount = current.wrongCount + 1;
-  const consecutiveMistakes = current.consecutiveMistakes + 1;
-  const penalty =
-    consecutiveMistakes === 1
-      ? 1
-      : Math.min(current.penalty * 2, PENALTY_MAX);
-  const recentResults = pushBounded(current.recentResults, 'w', RECENT_WINDOW);
-
+  // Wrong answer
   return {
     ...progress,
     [cardId]: {
       ...current,
       correctCount: current.correctCount,
-      wrongCount,
+      wrongCount: current.wrongCount + 1,
       seenCount,
-      mastered: current.mastered,
+      mastered: current.mastered, // sticky
       lastSeenAt,
       firstSeenAt,
-      streak: 0,
-      penalty,
-      consecutiveMistakes,
-      recentResults,
       dayHistory,
+      level: current.level,
+      levelCorrect: 0, // reset within level
+      wrongFlag: true,
+      lastShownCycleIndex,
     },
   };
 }
 
-export function migrateProgress(raw: unknown): ProgressState {
-  if (
-    raw !== null &&
-    typeof raw === 'object' &&
-    (raw as { schemaVersion?: unknown }).schemaVersion === 3
-  ) {
-    return raw as ProgressState;
-  }
+// ---------------------------------------------------------------------------
+// buildCycleQueue
+// ---------------------------------------------------------------------------
 
-  // v2 → v3: add dayHistory to each card
-  if (
-    raw !== null &&
-    typeof raw === 'object' &&
-    (raw as { schemaVersion?: unknown }).schemaVersion === 2
-  ) {
-    const v2 = raw as { schemaVersion: 2; byCard: Record<string, Partial<LetterProgress>> };
-    const byCard: ProgressByCard = {};
-    for (const [id, card] of Object.entries(v2.byCard)) {
-      byCard[id] = { ...defaultLetterProgress(), ...card, dayHistory: [] };
-    }
-    return { schemaVersion: 3, byCard };
-  }
-
-  const byCard: ProgressByCard = {};
-  if (raw === null || raw === undefined || typeof raw !== 'object') {
-    return { schemaVersion: 3, byCard };
-  }
-
-  // v1 (legacy flat object) → v3
-  const legacy = raw as Record<string, Partial<LetterProgress> | unknown>;
-  for (const [id, value] of Object.entries(legacy)) {
-    if (value === null || typeof value !== 'object') {
-      continue;
-    }
-    const old = value as Partial<LetterProgress>;
-    byCard[id] = {
-      correctCount: old.correctCount ?? 0,
-      wrongCount: old.wrongCount ?? 0,
-      seenCount: old.seenCount ?? 0,
-      mastered: old.mastered ?? false,
-      lastSeenAt: old.lastSeenAt ?? null,
-      streak: 0,
-      bestStreak: 0,
-      penalty: 0,
-      consecutiveMistakes: 0,
-      recentResults: [],
-      attemptsSinceEnteringActive: 0,
-      enteredActiveAt: null,
-      cardsShownSinceMastered: old.mastered ? 999 : 0,
-      sprinkleCooldown: 0,
-      timeSpentMs: 0,
-      firstSeenAt: old.lastSeenAt ?? null,
-      dayHistory: [],
-    };
-  }
-  return { schemaVersion: 3, byCard };
-}
-
-export function getUnlockedCards(
-  cards: LetterCard[],
+export function buildCycleQueue(
+  spaces: string[],
   progress: ProgressByCard,
-): LetterCard[] {
-  let unlockedCount = Math.min(INITIAL_UNLOCK_COUNT, cards.length);
+  cycleHistory: string[][],
+  currentCycleIndex: number,
+  rng: () => number = Math.random,
+): string[] {
+  const priority: string[] = [];
+  const other: string[] = [];
 
-  while (unlockedCount < cards.length) {
-    const unlockedCards = cards.slice(0, unlockedCount);
-    const allUnlockedMastered = unlockedCards.every(
-      (card) => getProgressForCard(progress, card.id).mastered,
-    );
+  for (const id of spaces) {
+    const p = getProgressForCard(progress, id);
+    const ageSinceShown = currentCycleIndex - p.lastShownCycleIndex;
+    if (p.wrongFlag || ageSinceShown >= 3) {
+      priority.push(id);
+    } else {
+      other.push(id);
+    }
+  }
 
-    if (!allUnlockedMastered) {
+  const lastTwo = cycleHistory.slice(-2);
+
+  let shuffledOther = fisherYates(other, rng);
+  let result = [...priority, ...shuffledOther];
+
+  // Anti-repeat: avoid 3 consecutive identical orders
+  let attempts = 1;
+  while (attempts < 3) {
+    const matchesLast = lastTwo.length > 0 && arraysEqual(result, lastTwo[lastTwo.length - 1]);
+    const matchesSecondLast = lastTwo.length > 1 && arraysEqual(result, lastTwo[lastTwo.length - 2]);
+    if (matchesLast && matchesSecondLast) {
+      shuffledOther = fisherYates(other, rng);
+      result = [...priority, ...shuffledOther];
+      attempts++;
+    } else {
       break;
     }
-
-    unlockedCount = Math.min(cards.length, unlockedCount + UNLOCK_STEP);
   }
 
-  return cards.slice(0, unlockedCount);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
-// Session state — spec §5
+// tickCycle
+// ---------------------------------------------------------------------------
+
+export function tickCycle(
+  state: SessionState,
+  progress: ProgressByCard,
+  path: LetterCard[],
+  rng: () => number = Math.random,
+): SessionState {
+  // 1. Check all-correct
+  const allCorrect = state.currentCycleWrongs === 0;
+
+  // 2. Update cycleCount
+  let newCycleCount = allCorrect ? state.cycleCount + 1 : 0;
+
+  // 3. Graduate cards that reached session mastery
+  const newSpaces = [...state.spaces];
+  const newWaitingPool = [...state.waitingPool];
+  const newGraduatedPool = [...state.graduatedPool];
+
+  const toGraduate = newSpaces.filter((id) => {
+    const p = getProgressForCard(progress, id);
+    return p.level >= SESSION_MASTERY_LEVEL;
+  });
+
+  for (const id of toGraduate) {
+    const idx = newSpaces.indexOf(id);
+    if (idx !== -1) newSpaces.splice(idx, 1);
+    if (!newGraduatedPool.includes(id)) newGraduatedPool.push(id);
+  }
+
+  // 4. Add new cards from waitingPool for each graduated slot (Trigger B)
+  for (let i = 0; i < toGraduate.length; i++) {
+    if (newWaitingPool.length > 0 && newSpaces.length < SPACES_MAX) {
+      const next = newWaitingPool.shift()!;
+      newSpaces.push(next);
+    }
+  }
+
+  // 5. Trigger A: consecutive all-correct cycles → grow by 1
+  if (
+    newCycleCount >= CYCLES_TO_GROW &&
+    newSpaces.length < SPACES_MAX &&
+    newWaitingPool.length > 0
+  ) {
+    const next = newWaitingPool.shift()!;
+    newSpaces.push(next);
+    newCycleCount = 0;
+  }
+
+  // 6. Shrink: too many wrongs this cycle
+  if (
+    state.currentCycleWrongs > CYCLE_WRONGS_TO_SHRINK &&
+    newSpaces.length > SPACES_MIN
+  ) {
+    // Find weakest card: lowest (level * CORRECT_PER_LEVEL + levelCorrect)
+    let weakestId = newSpaces[0];
+    let weakestScore = Infinity;
+    for (const id of newSpaces) {
+      const p = getProgressForCard(progress, id);
+      const score = p.level * CORRECT_PER_LEVEL + p.levelCorrect;
+      if (score < weakestScore) {
+        weakestScore = score;
+        weakestId = id;
+      }
+    }
+    const idx = newSpaces.indexOf(weakestId);
+    if (idx !== -1) newSpaces.splice(idx, 1);
+    // Put back at front of waitingPool so it re-enters soon
+    newWaitingPool.unshift(weakestId);
+    newCycleCount = 0;
+  }
+
+  // 7. Update cycleHistory: keep last 3
+  const newCycleHistory = [...state.cycleHistory, state.cycleQueue].slice(-3);
+
+  // 8. Increment currentCycleIndex
+  const newCurrentCycleIndex = state.currentCycleIndex + 1;
+
+  // 9. Build next cycleQueue
+  const nextCycleQueue = buildCycleQueue(
+    newSpaces,
+    progress,
+    newCycleHistory,
+    newCurrentCycleIndex,
+    rng,
+  );
+
+  return {
+    ...state,
+    spaces: newSpaces,
+    waitingPool: newWaitingPool,
+    graduatedPool: newGraduatedPool,
+    cycleQueue: nextCycleQueue,
+    cycleIndex: 0,
+    cycleCount: newCycleCount,
+    cycleHistory: newCycleHistory,
+    currentCycleIndex: newCurrentCycleIndex,
+    currentCycleWrongs: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// initSessionState
 // ---------------------------------------------------------------------------
 
 export function initSessionState(
   path: LetterCard[],
   progress: ProgressByCard,
+  rng: () => number = Math.random,
 ): SessionState {
   const unmastered = path.filter(
     (card) => !getProgressForCard(progress, card.id).mastered,
   );
-  const activeSet = unmastered.slice(0, ACTIVE_SET_START).map((c) => c.id);
+
+  const initialSpaceCards = unmastered.slice(0, SPACES_INIT);
+  const spaces = initialSpaceCards.map((c) => c.id);
+  const waitingPool = unmastered.slice(SPACES_INIT).map((c) => c.id);
+  const graduatedPool = path
+    .filter((card) => getProgressForCard(progress, card.id).mastered)
+    .map((c) => c.id);
+
+  const cycleQueue = buildCycleQueue(spaces, progress, [], 0, rng);
 
   return {
     startedAt: new Date().toISOString(),
     cardsShown: 0,
-    recentGrades: [],
-    inStruggleMode: false,
-    consecutiveCorrectInSession: 0,
+    spaces,
+    waitingPool,
+    graduatedPool,
+    cycleQueue,
+    cycleIndex: 0,
+    cycleCount: 0,
+    cycleHistory: [],
+    currentCycleIndex: 0,
+    currentCycleWrongs: 0,
     previousCardId: null,
-    twoBackCardId: null,
-    activeSet,
-    prePushedActiveSet: null,
-  };
-}
-
-function nextUnenteredFromPath(
-  path: LetterCard[],
-  state: SessionState,
-  progress: ProgressByCard,
-): LetterCard | null {
-  const used = new Set<string>(state.activeSet);
-  if (state.prePushedActiveSet) {
-    for (const id of state.prePushedActiveSet) used.add(id);
-  }
-  for (const card of path) {
-    // Skip cards already in the active set AND already-mastered cards so they
-    // never cycle back into the active set after being retired.
-    if (!used.has(card.id) && !getProgressForCard(progress, card.id).mastered) {
-      return card;
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Active-set lifecycle — spec §9
-// ---------------------------------------------------------------------------
-
-export function applyActiveSetOnCorrect(
-  state: SessionState,
-  _cardId: string,
-  _cardProgress: LetterProgress,
-  path: LetterCard[],
-  progress: ProgressByCard,
-): SessionState {
-  if (state.inStruggleMode) return state;
-  if (state.activeSet.length >= ACTIVE_SET_STEADY) return state;
-
-  const next = nextUnenteredFromPath(path, state, progress);
-  if (!next) return state;
-
-  return {
-    ...state,
-    activeSet: [...state.activeSet, next.id],
-  };
-}
-
-export function applyActiveSetOnMastery(
-  state: SessionState,
-  masteredCardId: string,
-  path: LetterCard[],
-  progress: ProgressByCard,
-): SessionState {
-  const remaining = state.activeSet.filter((id) => id !== masteredCardId);
-  // The just-mastered card has left the active set but must NOT be re-picked
-  // here as the "next un-entered" card. Inject it into the search state's
-  // activeSet so nextUnenteredFromPath skips it.
-  // Passing progress ensures previously-mastered cards are also never cycled back.
-  let nextActive = remaining;
-  const next = nextUnenteredFromPath(path, {
-    ...state,
-    activeSet: [...remaining, masteredCardId],
-  }, progress);
-  if (next) nextActive = [...remaining, next.id];
-
-  return {
-    ...state,
-    activeSet: nextActive,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Struggle mode — spec §9
+// chooseNextCard
 // ---------------------------------------------------------------------------
-
-export function struggleScore(
-  card: LetterCard,
-  cardProgress: LetterProgress,
-): number {
-  void card;
-  const wrongs = cardProgress.recentResults.filter((r) => r === 'w').length;
-  return cardProgress.consecutiveMistakes * 3 + cardProgress.penalty + wrongs;
-}
-
-function countWrongs(grades: Array<'c' | 'w'>): number {
-  let n = 0;
-  for (const g of grades) if (g === 'w') n += 1;
-  return n;
-}
-
-export function maybeEnterStruggleMode(
-  state: SessionState,
-  progress: ProgressByCard,
-  path: LetterCard[],
-): SessionState {
-  if (state.inStruggleMode) return state;
-  if (countWrongs(state.recentGrades) < STRUGGLE_WRONG_THRESHOLD) return state;
-
-  const cardById = new Map<string, LetterCard>(path.map((c) => [c.id, c]));
-  const ranked = [...state.activeSet]
-    .map((id) => {
-      const card = cardById.get(id);
-      const cardProgress = getProgressForCard(progress, id);
-      return {
-        id,
-        score: card ? struggleScore(card, cardProgress) : 0,
-        order: card?.order ?? Number.POSITIVE_INFINITY,
-      };
-    })
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.order - b.order;
-    });
-
-  const shrunk = ranked
-    .slice(0, Math.min(ACTIVE_SET_STRUGGLE, ranked.length))
-    .map((entry) => entry.id);
-
-  return {
-    ...state,
-    inStruggleMode: true,
-    prePushedActiveSet: state.activeSet,
-    activeSet: shrunk,
-  };
-}
-
-export function maybeExitStruggleMode(
-  state: SessionState,
-  _path: LetterCard[],
-): SessionState {
-  if (!state.inStruggleMode) return state;
-  if (state.consecutiveCorrectInSession < STRUGGLE_RECOVERY_STREAK) return state;
-
-  return {
-    ...state,
-    inStruggleMode: false,
-    activeSet: state.prePushedActiveSet ?? state.activeSet,
-    prePushedActiveSet: null,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Sprinkle (post-mastery review) — spec §12
-// ---------------------------------------------------------------------------
-
-export function eligibleForSprinkle(
-  cardProgress: LetterProgress,
-  state: SessionState,
-): boolean {
-  if (!cardProgress.mastered) return false;
-  if (cardProgress.sprinkleCooldown !== 0) return false;
-  if (state.cardsShown % SPRINKLE_EVERY_N_CARDS !== 0) return false;
-  if (state.inStruggleMode) return false;
-  if (cardProgress.cardsShownSinceMastered < NEWLY_MASTERED_QUIET_PERIOD) return false;
-  return true;
-}
-
-export function tickSprinkleCooldowns(
-  progress: ProgressByCard,
-  shownCardId: string,
-): ProgressByCard {
-  const next: ProgressByCard = { ...progress };
-  for (const [id, p] of Object.entries(progress)) {
-    if (id === shownCardId) continue;
-    if (!p.mastered) continue;
-    if (p.sprinkleCooldown <= 0) continue;
-    next[id] = { ...p, sprinkleCooldown: Math.max(0, p.sprinkleCooldown - 1) };
-  }
-  return next;
-}
-
-export function tickPostMasteryCounters(progress: ProgressByCard): ProgressByCard {
-  const next: ProgressByCard = { ...progress };
-  for (const [id, p] of Object.entries(progress)) {
-    if (!p.mastered) continue;
-    next[id] = { ...p, cardsShownSinceMastered: p.cardsShownSinceMastered + 1 };
-  }
-  return next;
-}
-
-// ---------------------------------------------------------------------------
-// Visibility score — spec §8
-// ---------------------------------------------------------------------------
-
-export function visibilityScore(
-  card: LetterCard,
-  cardProgress: LetterProgress,
-  state: SessionState,
-): number {
-  // Hard rules.
-  if (card.id === state.previousCardId && state.activeSet.length > 1) return 0;
-  if (cardProgress.mastered) {
-    return eligibleForSprinkle(cardProgress, state) ? W_SPRINKLE : 0;
-  }
-
-  let score = W_BASE;
-
-  if (cardProgress.attemptsSinceEnteringActive < NEW_CARD_BOOST_DURATION) {
-    const decay =
-      1 - cardProgress.attemptsSinceEnteringActive / NEW_CARD_BOOST_DURATION;
-    score += NEW_CARD_BOOST_WEIGHT * decay;
-  }
-
-  const recent = cardProgress.recentResults;
-  if (recent.length > 0 && recent[recent.length - 1] === 'w') {
-    score += W_RECENT_MISS;
-  }
-
-  score += cardProgress.penalty * W_PENALTY;
-  score += Math.max(0, MASTERY_TARGET - cardProgress.streak) * W_STREAK_GAP;
-
-  // Freshness based on cardsShown distance proxy: clamp to 5 if no last-seen tick.
-  // recentResults carries 'c'/'w' history but not absolute distance; spec uses
-  // cardsAgoSeen (live in session). For CTX-06 we approximate: recently-graded
-  // cards have a populated recentResults; we use 5 - min(recent.length,5) as a
-  // crude freshness term so a card that hasn't been seen this session gets the
-  // full bump. This keeps freshness > 0 without adding session-wide bookkeeping.
-  const freshness = 5 - Math.min(recent.length, 5);
-  score += freshness * W_FRESHNESS;
-
-  return score;
-}
-
-// ---------------------------------------------------------------------------
-// Selection — spec §10
-// ---------------------------------------------------------------------------
-
-function weightedRandomPick<T>(
-  scored: Array<[T, number]>,
-  rng: () => number,
-): T {
-  const total = scored.reduce((sum, [, w]) => sum + w, 0);
-  if (total <= 0) {
-    return scored[Math.floor(rng() * scored.length)][0];
-  }
-  let r = rng() * total;
-  for (let i = 0; i < scored.length; i++) {
-    r -= scored[i][1];
-    if (r <= 0) return scored[i][0];
-  }
-  return scored[scored.length - 1][0];
-}
-
-function transientSession(
-  cards: LetterCard[],
-  progress: ProgressByCard,
-  previousCardId: string,
-): SessionState {
-  const unmastered = cards.filter(
-    (c) => !getProgressForCard(progress, c.id).mastered,
-  );
-  const seed = unmastered.length > 0 ? unmastered : cards;
-  const activeSet = seed.slice(0, ACTIVE_SET_START).map((c) => c.id);
-
-  return {
-    startedAt: new Date().toISOString(),
-    cardsShown: 0,
-    recentGrades: [],
-    inStruggleMode: false,
-    consecutiveCorrectInSession: 0,
-    previousCardId,
-    twoBackCardId: null,
-    activeSet,
-    prePushedActiveSet: null,
-  };
-}
 
 export function chooseNextCard(
   cards: LetterCard[],
@@ -609,79 +424,195 @@ export function chooseNextCard(
   session?: SessionState,
   rng: () => number = Math.random,
 ): LetterCard {
-  const state = session ?? transientSession(cards, progress, previousCardId);
   const cardById = new Map<string, LetterCard>(cards.map((c) => [c.id, c]));
 
-  // Resolve activeSet ids → LetterCard, dropping any ids that aren't on the path.
-  const activeCards: LetterCard[] = state.activeSet
-    .map((id) => cardById.get(id))
-    .filter((c): c is LetterCard => c !== undefined);
-
-  if (activeCards.length === 0) {
-    // Path-complete fallback (spec §11): when the entire path is mastered, the
-    // active set drains to empty. Score from the full mastered path with
-    // sprinkle weight + anti-repeat hard rule.
-    if (isPathComplete(cards, progress)) {
-      const masteredCards = cards.filter(
-        (c) => getProgressForCard(progress, c.id).mastered,
-      );
-      const scored: Array<[LetterCard, number]> = masteredCards.map((card) => {
-        if (card.id === state.previousCardId && masteredCards.length > 1) {
-          return [card, 0];
-        }
-        return [card, W_SPRINKLE];
-      });
-      const filtered = scored.filter(([, s]) => s > 0);
-      if (filtered.length === 0) {
-        return masteredCards[0] ?? cards[0];
-      }
-      return weightedRandomPick(filtered, rng);
+  if (session) {
+    const id = session.cycleQueue[session.cycleIndex];
+    if (id !== undefined) {
+      const card = cardById.get(id);
+      if (card) return card;
     }
-
-    // Defensive: fall back to any unmastered card on the path, else first card.
+    // Fallback if cycleQueue is empty or id not found
     const fallback = cards.find(
       (c) => !getProgressForCard(progress, c.id).mastered,
     );
     return fallback ?? cards[0];
   }
 
-  if (activeCards.length === 1) {
-    return activeCards[0];
+  // No session — build a transient one
+  const unmastered = cards.filter(
+    (c) => !getProgressForCard(progress, c.id).mastered,
+  );
+  const seed = unmastered.length > 0 ? unmastered : cards;
+  const spaces = seed.slice(0, SPACES_INIT).map((c) => c.id);
+  const cycleQueue = buildCycleQueue(spaces, progress, [], 0, rng);
+
+  const firstId = cycleQueue[0];
+  if (firstId !== undefined) {
+    const card = cardById.get(firstId);
+    if (card) return card;
   }
 
-  const scored: Array<[LetterCard, number]> = activeCards.map((card) => [
-    card,
-    visibilityScore(card, getProgressForCard(progress, card.id), state),
-  ]);
-  const filtered = scored.filter(([, s]) => s > 0);
-
-  if (filtered.length === 0) {
-    const nonPrev = activeCards.find((c) => c.id !== state.previousCardId);
-    return nonPrev ?? activeCards[0];
-  }
-
-  return weightedRandomPick(filtered, rng);
+  return seed[0] ?? cards[0];
 }
 
 // ---------------------------------------------------------------------------
-// Global progress — per-click tracking across all cards in the active path
+// computeGlobalProgress
 // ---------------------------------------------------------------------------
 
 export function computeGlobalProgress(
   progress: ProgressByCard,
   cards: LetterCard[],
 ): { earned: number; max: number; percent: number } {
-  const PER_LETTER_MAX = WARMUP_PER_CARD + MASTERY_TARGET;
+  // 3 accessible levels (0, 1, 2) × 5 correct each = 15
+  const PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL + CORRECT_PER_LEVEL;
+
   let earned = 0;
   for (const card of cards) {
     const p = getProgressForCard(progress, card.id);
-    if (p.mastered) {
-      earned += PER_LETTER_MAX;
-    } else {
-      earned += Math.min(p.correctCount, WARMUP_PER_CARD) + p.streak;
-    }
+    const cardEarned = Math.min(
+      p.level * CORRECT_PER_LEVEL + p.levelCorrect,
+      PER_LETTER_EFFECTIVE_MAX,
+    );
+    earned += cardEarned;
   }
-  const max = cards.length * PER_LETTER_MAX;
-  const percent = max > 0 ? Math.min(100, Math.round((earned / max) * 100)) : 0;
+
+  const max = cards.length * PER_LETTER_EFFECTIVE_MAX;
+  const percent = max === 0 ? 0 : Math.min(100, Math.round((earned / max) * 100));
   return { earned, max, percent };
+}
+
+// ---------------------------------------------------------------------------
+// migrateProgress
+// ---------------------------------------------------------------------------
+
+export function migrateProgress(raw: unknown): ProgressState {
+  // Already v4
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    (raw as { schemaVersion?: unknown }).schemaVersion === 4
+  ) {
+    return raw as ProgressState;
+  }
+
+  // v3 → v4
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    (raw as { schemaVersion?: unknown }).schemaVersion === 3
+  ) {
+    const v3 = raw as {
+      schemaVersion: 3;
+      byCard: Record<string, {
+        correctCount?: number;
+        wrongCount?: number;
+        seenCount?: number;
+        mastered?: boolean;
+        lastSeenAt?: string | null;
+        firstSeenAt?: string | null;
+        dayHistory?: string[];
+        streak?: number;
+      }>;
+    };
+    const byCard: ProgressByCard = {};
+    for (const [id, old] of Object.entries(v3.byCard)) {
+      byCard[id] = migrateOldCard(old);
+    }
+    return { schemaVersion: 4, byCard };
+  }
+
+  // v2 → v4
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    (raw as { schemaVersion?: unknown }).schemaVersion === 2
+  ) {
+    const v2 = raw as {
+      schemaVersion: 2;
+      byCard: Record<string, {
+        correctCount?: number;
+        wrongCount?: number;
+        seenCount?: number;
+        mastered?: boolean;
+        lastSeenAt?: string | null;
+        firstSeenAt?: string | null;
+        dayHistory?: string[];
+      }>;
+    };
+    const byCard: ProgressByCard = {};
+    for (const [id, old] of Object.entries(v2.byCard)) {
+      byCard[id] = migrateOldCard(old);
+    }
+    return { schemaVersion: 4, byCard };
+  }
+
+  // null / undefined / empty
+  if (raw === null || raw === undefined || typeof raw !== 'object') {
+    return { schemaVersion: 4, byCard: {} };
+  }
+
+  // v1 (legacy flat object — no schemaVersion)
+  const legacy = raw as Record<string, unknown>;
+  // If the only keys look like card IDs and values are objects, treat as v1
+  const byCard: ProgressByCard = {};
+  for (const [id, value] of Object.entries(legacy)) {
+    if (value === null || typeof value !== 'object') continue;
+    const old = value as {
+      correctCount?: number;
+      wrongCount?: number;
+      seenCount?: number;
+      mastered?: boolean;
+      lastSeenAt?: string | null;
+      firstSeenAt?: string | null;
+      dayHistory?: string[];
+    };
+    byCard[id] = migrateOldCard(old);
+  }
+  return { schemaVersion: 4, byCard };
+}
+
+type OldCardShape = {
+  correctCount?: number;
+  wrongCount?: number;
+  seenCount?: number;
+  mastered?: boolean;
+  lastSeenAt?: string | null;
+  firstSeenAt?: string | null;
+  dayHistory?: string[];
+  streak?: number;
+};
+
+function migrateOldCard(old: OldCardShape): LetterProgress {
+  const correctCount = old.correctCount ?? 0;
+  const streak = old.streak ?? 0;
+
+  let level: number;
+  let levelCorrect: number;
+
+  if (old.mastered === true) {
+    level = SESSION_MASTERY_LEVEL;
+    levelCorrect = 0;
+  } else if (correctCount > CORRECT_PER_LEVEL) {
+    // Old warmup done, was in streak phase
+    level = 1;
+    levelCorrect = Math.min(streak, CORRECT_PER_LEVEL - 1);
+  } else {
+    level = 0;
+    levelCorrect = Math.min(correctCount, CORRECT_PER_LEVEL - 1);
+  }
+
+  return {
+    correctCount,
+    wrongCount: old.wrongCount ?? 0,
+    seenCount: old.seenCount ?? 0,
+    mastered: old.mastered ?? false,
+    lastSeenAt: old.lastSeenAt ?? null,
+    firstSeenAt: old.firstSeenAt ?? null,
+    dayHistory: old.dayHistory ?? [],
+    level,
+    levelCorrect,
+    wrongFlag: false,
+    lastShownCycleIndex: 0,
+  };
 }
