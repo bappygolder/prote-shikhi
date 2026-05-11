@@ -284,9 +284,21 @@ export function buildCycleQueue(
   cycleHistory: string[][],
   currentCycleIndex: number,
   rng: () => number = Math.random,
+  opts: BuildCycleQueueOpts = {},
 ): string[] {
+  const {
+    graduatedPool = [],
+    waitingPool = [],
+    practiceMode = false,
+    previousCardId = null,
+  } = opts;
+
+  const isEndOfStack = !practiceMode && waitingPool.length === 0 && graduatedPool.length > 0;
+
+  // Priority / regular split
   const priority: string[] = [];
-  const other: string[] = [];
+  const regular: string[] = [];
+  const refresherSet = new Set<string>();
 
   for (const id of spaces) {
     const p = getProgressForCard(progress, id);
@@ -294,22 +306,66 @@ export function buildCycleQueue(
     if (p.wrongFlag || ageSinceShown >= 3) {
       priority.push(id);
     } else {
-      other.push(id);
+      regular.push(id);
     }
   }
 
+  // End-of-stack: pull graduated cards back as refreshers (sorted by error rate desc)
+  if (isEndOfStack) {
+    const shuffled = fisherYates([...graduatedPool], rng);
+    shuffled.sort((a, b) => {
+      const pa = getProgressForCard(progress, a);
+      const pb = getProgressForCard(progress, b);
+      return (pb.wrongCount / (pb.seenCount + 1)) - (pa.wrongCount / (pa.seenCount + 1));
+    });
+    for (const id of shuffled) {
+      refresherSet.add(id);
+      regular.push(id);
+    }
+  }
+
+  // Build slot maps
+  const prioritySlots = new Map<string, number>(
+    priority.map((id) => [id, cardSlotCount(id, progress, practiceMode, false)]),
+  );
+  const regularSlots = new Map<string, number>(
+    regular.map((id) => [id, cardSlotCount(id, progress, practiceMode, refresherSet.has(id))]),
+  );
+
+  // Weighted no-consecutive shuffle each group
+  const priorityQueue = weightedNoConsecutiveShuffle(prioritySlots, rng);
+  const regularQueue = weightedNoConsecutiveShuffle(regularSlots, rng);
+
+  // Interleave: alternate priority then regular
+  const result: string[] = [];
+  let pi = 0;
+  let ri = 0;
+  while (pi < priorityQueue.length || ri < regularQueue.length) {
+    if (pi < priorityQueue.length) result.push(priorityQueue[pi++]);
+    if (ri < regularQueue.length) result.push(regularQueue[ri++]);
+  }
+
+  // Anti-consecutive at cycle boundary: rotate first card to back if it repeats last shown
+  if (previousCardId !== null && result.length > 1 && result[0] === previousCardId) {
+    result.push(result.shift()!);
+  }
+
+  // Anti-repeat: avoid identical sequence to last cycle
   const lastTwo = cycleHistory.slice(-2);
-
-  let shuffledOther = fisherYates(other, rng);
-  let result = [...priority, ...shuffledOther];
-
-  // Anti-repeat: avoid any two consecutive identical orders
   let attempts = 1;
   while (attempts < 3) {
-    const matchesLast = lastTwo.length > 0 && arraysEqual(result, lastTwo[lastTwo.length - 1]);
-    if (matchesLast) {
-      shuffledOther = fisherYates(other, rng);
-      result = [...priority, ...shuffledOther];
+    if (lastTwo.length > 0 && arraysEqual(result, lastTwo[lastTwo.length - 1])) {
+      const reRegular = weightedNoConsecutiveShuffle(regularSlots, rng);
+      result.length = 0;
+      pi = 0;
+      let rri = 0;
+      while (pi < priorityQueue.length || rri < reRegular.length) {
+        if (pi < priorityQueue.length) result.push(priorityQueue[pi++]);
+        if (rri < reRegular.length) result.push(reRegular[rri++]);
+      }
+      if (previousCardId !== null && result.length > 1 && result[0] === previousCardId) {
+        result.push(result.shift()!);
+      }
       attempts++;
     } else {
       break;
@@ -412,6 +468,12 @@ export function tickCycle(
     newCycleHistory,
     newCurrentCycleIndex,
     rng,
+    {
+      graduatedPool: newGraduatedPool,
+      waitingPool: newWaitingPool,
+      practiceMode: false,
+      previousCardId: state.previousCardId,
+    },
   );
 
   return {
@@ -448,7 +510,11 @@ export function initSessionState(
     .filter((card) => getProgressForCard(progress, card.id).mastered)
     .map((c) => c.id);
 
-  const cycleQueue = buildCycleQueue(spaces, progress, [], 0, rng);
+  const cycleQueue = buildCycleQueue(spaces, progress, [], 0, rng, {
+    graduatedPool,
+    waitingPool,
+    practiceMode: false,
+  });
 
   return {
     startedAt: new Date().toISOString(),

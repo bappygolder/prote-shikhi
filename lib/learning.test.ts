@@ -239,12 +239,12 @@ test('applyGrade: dayHistory grows only once per calendar day', () => {
 // buildCycleQueue — ordering rules
 // ---------------------------------------------------------------------------
 
-test('buildCycleQueue: result length equals spaces.length', () => {
-  const path = makePath(3);
-  const progress = defaultProgressFor(path.map((c) => c.id));
+test('buildCycleQueue: result length equals sum of slot counts for all spaces cards', () => {
+  // All cards at level 0 → 3 slots each → 3 cards × 3 slots = 9
   const spaces = ['card-1', 'card-2', 'card-3'];
+  const progress = defaultProgressFor(spaces);
   const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
-  assert.equal(queue.length, spaces.length);
+  assert.equal(queue.length, 9);
 });
 
 test('buildCycleQueue: cards with wrongFlag=true appear before cards without', () => {
@@ -271,6 +271,62 @@ test('buildCycleQueue: anti-repeat — avoids same order as last cycle (3+ cards
     }
   }
   assert.ok(differentFound, 'anti-repeat should produce a different order at least once');
+});
+
+test('buildCycleQueue: level-0 card appears 3 times in a cycle', () => {
+  const spaces = ['card-1'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 0 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  assert.equal(queue.length, 3);
+  assert.ok(queue.every(id => id === 'card-1'));
+});
+
+test('buildCycleQueue: level-1 card appears 2 times in a cycle', () => {
+  const spaces = ['card-1'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 1 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  assert.equal(queue.length, 2);
+});
+
+test('buildCycleQueue: level-2 card appears 1 time in a cycle', () => {
+  const spaces = ['card-1'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 2 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  assert.equal(queue.length, 1);
+});
+
+test('buildCycleQueue: anti-consecutive — first card rotated to back when it matches previousCardId', () => {
+  const spaces = ['card-1', 'card-2'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 2 }, // 1 slot
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: 2 }, // 1 slot
+  };
+  for (let seed = 0; seed < 50; seed++) {
+    const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(seed), {
+      previousCardId: 'card-1',
+    });
+    assert.notEqual(queue[0], 'card-1',
+      `queue[0] should not equal previousCardId='card-1', got: ${queue.join(',')}`);
+  }
+});
+
+test('buildCycleQueue: no rotation when first card differs from previousCardId', () => {
+  const spaces = ['card-1', 'card-2'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 2 },
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: 2 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1), {
+    previousCardId: 'card-99', // not in spaces — no rotation needed
+  });
+  assert.equal(queue.length, 2);
+  assert.ok(queue.includes('card-1') && queue.includes('card-2'));
 });
 
 // ---------------------------------------------------------------------------
@@ -441,10 +497,12 @@ test('initSessionState: graduatedPool contains already-mastered cards', () => {
   assert.equal(session.graduatedPool.length, 2);
 });
 
-test('initSessionState: cycleQueue has exactly SPACES_INIT entries', () => {
+test('initSessionState: cycleQueue length equals sum of slot counts for initial spaces', () => {
+  // SPACES_INIT=2 cards both at level 0 → 3 slots each → length = 6
   const path = makePath(5);
   const session = initSessionState(path, {}, mulberry32(1));
-  assert.equal(session.cycleQueue.length, SPACES_INIT);
+  // Each level-0 card has 3 slots: 2 × 3 = 6
+  assert.equal(session.cycleQueue.length, SPACES_INIT * SESSION_MASTERY_LEVEL);
 });
 
 test('initSessionState: cycleIndex=0, cycleCount=0, currentCycleIndex=0', () => {
