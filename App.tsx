@@ -1561,28 +1561,29 @@ function App() {
                 <Text style={styles.resetText}>আবার শুরু</Text>
               </Pressable>
 
-              <View style={styles.footerContainer}>
-                <Text style={styles.footerText}>
-                  {'Built by '}
-                  <Text
-                    onPress={() => Linking.openURL('https://www.linkedin.com/in/bappygolder/')}
-                    style={styles.footerLink}
-                  >
-                    Bappy Golder
-                  </Text>
-                </Text>
-                <Text style={styles.footerText}>
-                  {'Powered by '}
-                  <Text
-                    onPress={() => Linking.openURL('https://olab.com.au/')}
-                    style={styles.footerLink}
-                  >
-                    oLab
-                  </Text>
-                </Text>
-                <Text style={styles.footerVersion}>{APP_VERSION}</Text>
-              </View>
             </ScrollView>
+
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>
+                {'Built by '}
+                <Text
+                  onPress={() => Linking.openURL('https://www.linkedin.com/in/bappygolder/')}
+                  style={styles.footerLink}
+                >
+                  Bappy Golder
+                </Text>
+              </Text>
+              <Text style={styles.footerText}>
+                {'Powered by '}
+                <Text
+                  onPress={() => Linking.openURL('https://olab.com.au/')}
+                  style={styles.footerLink}
+                >
+                  oLab
+                </Text>
+              </Text>
+              <Text style={styles.footerVersion}>{APP_VERSION}</Text>
+            </View>
           </Animated.View>
         </View>
       ) : null}

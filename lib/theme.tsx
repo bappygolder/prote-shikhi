@@ -1035,6 +1035,70 @@ function makeStyles(c: ColorTokens) {
       fontWeight: '700',
       letterSpacing: 0,
     },
+    statsModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'flex-end',
+    },
+    statsModal: {
+      backgroundColor: c.bgSurface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 24,
+      paddingBottom: 36,
+    },
+    statsModalLetter: {
+      fontSize: 56,
+      textAlign: 'center',
+      color: c.textHeading,
+      fontWeight: '700',
+      marginBottom: 8,
+    },
+    statsModalDivider: {
+      height: 1,
+      backgroundColor: c.borderDefault,
+      marginVertical: 12,
+    },
+    statsModalRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 6,
+    },
+    statsModalLabel: {
+      fontSize: 15,
+      color: c.textSecondary,
+    },
+    statsModalValue: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: c.textHeading,
+    },
+    statsModalMastered: {
+      color: c.textAccent,
+    },
+    statsModalPracticeBtn: {
+      backgroundColor: c.textAccent,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    statsModalPracticeBtnText: {
+      color: c.textOnDark,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    statsModalCloseBtn: {
+      borderRadius: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+      marginTop: 6,
+    },
+    statsModalCloseBtnText: {
+      color: c.textSecondary,
+      fontSize: 14,
+    },
     appFooter: {
       flexDirection: 'row',
       alignItems: 'center',
