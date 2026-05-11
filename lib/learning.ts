@@ -78,7 +78,7 @@ function defaultLetterProgress(): LetterProgress {
     level: 0,
     levelCorrect: 0,
     wrongFlag: false,
-    lastShownCycleIndex: 0,
+    lastShownCycleIndex: 0, // new cards default to 0; priority boost fires automatically when currentCycleIndex ≥ 3
   };
 }
 
@@ -119,13 +119,6 @@ export function isPresetComplete(
   progress: ProgressByCard,
 ): boolean {
   return cards.every((card) => getProgressForCard(progress, card.id).mastered);
-}
-
-export function isPathComplete(
-  path: LetterCard[],
-  progress: ProgressByCard,
-): boolean {
-  return isPresetComplete(path, progress);
 }
 
 export function resetCards(
@@ -192,7 +185,6 @@ export function applyGrade(
       [cardId]: {
         ...current,
         correctCount,
-        wrongCount: current.wrongCount,
         seenCount,
         mastered,
         lastSeenAt,
@@ -211,14 +203,11 @@ export function applyGrade(
     ...progress,
     [cardId]: {
       ...current,
-      correctCount: current.correctCount,
       wrongCount: current.wrongCount + 1,
       seenCount,
-      mastered: current.mastered, // sticky
       lastSeenAt,
       firstSeenAt,
       dayHistory,
-      level: current.level,
       levelCorrect: 0, // reset within level
       wrongFlag: true,
       lastShownCycleIndex,
@@ -255,12 +244,11 @@ export function buildCycleQueue(
   let shuffledOther = fisherYates(other, rng);
   let result = [...priority, ...shuffledOther];
 
-  // Anti-repeat: avoid 3 consecutive identical orders
+  // Anti-repeat: avoid any two consecutive identical orders
   let attempts = 1;
   while (attempts < 3) {
     const matchesLast = lastTwo.length > 0 && arraysEqual(result, lastTwo[lastTwo.length - 1]);
-    const matchesSecondLast = lastTwo.length > 1 && arraysEqual(result, lastTwo[lastTwo.length - 2]);
-    if (matchesLast && matchesSecondLast) {
+    if (matchesLast) {
       shuffledOther = fisherYates(other, rng);
       result = [...priority, ...shuffledOther];
       attempts++;
@@ -305,11 +293,17 @@ export function tickCycle(
   }
 
   // 4. Add new cards from waitingPool for each graduated slot (Trigger B)
+  let backfilledCount = 0;
   for (let i = 0; i < toGraduate.length; i++) {
     if (newWaitingPool.length > 0 && newSpaces.length < SPACES_MAX) {
       const next = newWaitingPool.shift()!;
       newSpaces.push(next);
+      backfilledCount++;
     }
+  }
+  // Reset cycle counter after backfill to avoid unearned Trigger A growth
+  if (toGraduate.length > 0 && backfilledCount > 0) {
+    newCycleCount = 0;
   }
 
   // 5. Trigger A: consecutive all-correct cycles → grow by 1
@@ -464,8 +458,7 @@ export function computeGlobalProgress(
   progress: ProgressByCard,
   cards: LetterCard[],
 ): { earned: number; max: number; percent: number } {
-  // 3 accessible levels (0, 1, 2) × 5 correct each = 15
-  const PER_LETTER_EFFECTIVE_MAX = SESSION_MASTERY_LEVEL * CORRECT_PER_LEVEL + CORRECT_PER_LEVEL;
+  const PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL;
 
   let earned = 0;
   for (const card of cards) {
@@ -487,13 +480,22 @@ export function computeGlobalProgress(
 // ---------------------------------------------------------------------------
 
 export function migrateProgress(raw: unknown): ProgressState {
-  // Already v4
+  // Already v4 — but fill in any missing fields defensively (corrupt/partial blobs)
   if (
     raw !== null &&
     typeof raw === 'object' &&
     (raw as { schemaVersion?: unknown }).schemaVersion === 4
   ) {
-    return raw as ProgressState;
+    const v4 = raw as { schemaVersion: 4; byCard: Record<string, unknown> };
+    const byCard: ProgressByCard = {};
+    for (const [id, entry] of Object.entries(v4.byCard ?? {})) {
+      if (entry !== null && typeof entry === 'object') {
+        byCard[id] = { ...defaultLetterProgress(), ...(entry as Partial<LetterProgress>) };
+      } else {
+        byCard[id] = defaultLetterProgress();
+      }
+    }
+    return { schemaVersion: 4, byCard };
   }
 
   // v3 → v4
@@ -593,7 +595,7 @@ function migrateOldCard(old: OldCardShape): LetterProgress {
   if (old.mastered === true) {
     level = SESSION_MASTERY_LEVEL;
     levelCorrect = 0;
-  } else if (correctCount > CORRECT_PER_LEVEL) {
+  } else if (correctCount >= CORRECT_PER_LEVEL) {
     // Old warmup done, was in streak phase
     level = 1;
     levelCorrect = Math.min(streak, CORRECT_PER_LEVEL - 1);
