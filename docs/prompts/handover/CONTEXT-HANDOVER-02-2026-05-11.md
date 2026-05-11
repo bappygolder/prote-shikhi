@@ -4,7 +4,7 @@
 
 **App version**: `v1.2.0` — visible in the menu footer. This is what to look for to confirm the app has reloaded.
 
-**Branch**: `main` — all work from this session is committed and up to date.
+**Branch**: `feat/ctx-15-custom-fast-path` — all CTX-15 work from this session is committed here. **Not yet merged to main.** The next agent should either open a PR or merge before pushing to production.
 
 ---
 
