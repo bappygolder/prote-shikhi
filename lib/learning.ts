@@ -18,6 +18,17 @@ export const NEW_CARD_PRIORITY_CYCLES = 3;
 export const CYCLE_WRONGS_TO_SHRINK = 2;
 
 // ---------------------------------------------------------------------------
+// Build opts
+// ---------------------------------------------------------------------------
+
+export type BuildCycleQueueOpts = {
+  graduatedPool?: string[];
+  waitingPool?: string[];
+  practiceMode?: boolean;
+  previousCardId?: string | null;
+};
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -104,6 +115,48 @@ function arraysEqual(a: string[], b: string[]): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function cardSlotCount(
+  id: string,
+  progress: ProgressByCard,
+  practiceMode: boolean,
+  isRefresher: boolean,
+): number {
+  if (isRefresher) return 1;
+  const p = getProgressForCard(progress, id);
+  if (practiceMode) {
+    const errorRate = p.wrongCount / (p.seenCount + 1);
+    return 1 + Math.round(errorRate * 2);
+  }
+  return Math.max(1, SESSION_MASTERY_LEVEL - p.level);
+}
+
+function weightedNoConsecutiveShuffle(
+  ids: string[],
+  slotMap: Map<string, number>,
+  rng: () => number,
+): string[] {
+  if (ids.length === 0) return [];
+  const remaining = new Map(slotMap);
+  const total = [...remaining.values()].reduce((a, b) => a + b, 0);
+  const result: string[] = [];
+
+  for (let i = 0; i < total; i++) {
+    const last = result[result.length - 1] ?? null;
+    const eligible = [...remaining.entries()].filter(([id, w]) => w > 0 && id !== last);
+    const pool =
+      eligible.length > 0
+        ? eligible
+        : [...remaining.entries()].filter(([, w]) => w > 0); // forced repeat fallback
+    const maxW = Math.max(...pool.map(([, w]) => w));
+    const top = pool.filter(([, w]) => w === maxW);
+    const chosen = top[Math.floor(rng() * top.length)][0];
+    result.push(chosen);
+    remaining.set(chosen, remaining.get(chosen)! - 1);
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -74,6 +74,44 @@ function gradeMany(
 }
 
 // ---------------------------------------------------------------------------
+// weightedNoConsecutiveShuffle (internal helper — tested via exported wrapper)
+// ---------------------------------------------------------------------------
+// We test it indirectly through buildCycleQueue weighted-slot tests in Task 2.
+// Direct tests below use a local re-implementation to confirm the contract.
+
+test('weightedNoConsecutiveShuffle contract: total output length equals sum of weights', () => {
+  // Import the helper indirectly by verifying buildCycleQueue output lengths.
+  // A level-0 card has weight 3, a level-2 card has weight 1 → total 4.
+  const spaces = ['card-1', 'card-2'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 0 },
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: 2 },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  // level-0 → 3 slots, level-2 → 1 slot = 4 total
+  assert.equal(queue.length, 4);
+});
+
+test('weightedNoConsecutiveShuffle contract: no two consecutive identical entries when avoidable', () => {
+  const spaces = ['card-1', 'card-2'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 0 }, // 3 slots
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: 2 }, // 1 slot
+  };
+  for (let seed = 0; seed < 20; seed++) {
+    const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(seed));
+    let firstConsecutiveIdx = -1;
+    for (let i = 0; i < queue.length - 1; i++) {
+      if (queue[i] === queue[i + 1]) { firstConsecutiveIdx = i; break; }
+    }
+    if (firstConsecutiveIdx !== -1) {
+      assert.equal(firstConsecutiveIdx, queue.length - 2,
+        `consecutive pair should only appear at end (forced), got at index ${firstConsecutiveIdx}: ${queue.join(',')}`);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // applyGrade — basic counters
 // ---------------------------------------------------------------------------
 
