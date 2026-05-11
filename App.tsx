@@ -556,7 +556,7 @@ function App() {
 
     // Debounce writes so a flurry of grade taps coalesces into one save.
     const timer = setTimeout(() => {
-      const toPersist: ProgressState = { schemaVersion: 2, byCard: progress };
+      const toPersist: ProgressState = { schemaVersion: 3, byCard: progress };
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist)).catch(() => {
         // Keep the trainer responsive even if storage fails.
       });

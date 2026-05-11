@@ -68,12 +68,15 @@ export type LetterProgress = {
 
   // timestamp
   firstSeenAt: string | null;
+
+  // days practised (ISO date strings, one per unique calendar day)
+  dayHistory: string[];
 };
 
 export type ProgressByCard = Record<string, LetterProgress>;
 
 export type ProgressState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   byCard: ProgressByCard;
 };
 
@@ -110,6 +113,7 @@ function defaultLetterProgress(): LetterProgress {
     sprinkleCooldown: 0,
     timeSpentMs: 0,
     firstSeenAt: null,
+    dayHistory: [],
   };
 }
 
@@ -162,10 +166,15 @@ export function applyGrade(
 ): ProgressByCard {
   const current = getProgressForCard(progress, cardId);
   const now = new Date().toISOString();
+  const today = now.slice(0, 10);
 
   const seenCount = current.seenCount + 1;
   const firstSeenAt = current.firstSeenAt ?? now;
   const lastSeenAt = now;
+  const dayHistory =
+    current.dayHistory[current.dayHistory.length - 1] === today
+      ? current.dayHistory
+      : [...current.dayHistory, today];
 
   if (wasCorrect) {
     const correctCount = current.correctCount + 1;
@@ -193,6 +202,7 @@ export function applyGrade(
         penalty,
         consecutiveMistakes: 0,
         recentResults,
+        dayHistory,
       },
     };
   }
@@ -219,6 +229,7 @@ export function applyGrade(
       penalty,
       consecutiveMistakes,
       recentResults,
+      dayHistory,
     },
   };
 }
@@ -227,16 +238,31 @@ export function migrateProgress(raw: unknown): ProgressState {
   if (
     raw !== null &&
     typeof raw === 'object' &&
-    (raw as { schemaVersion?: unknown }).schemaVersion === 2
+    (raw as { schemaVersion?: unknown }).schemaVersion === 3
   ) {
     return raw as ProgressState;
   }
 
-  const byCard: ProgressByCard = {};
-  if (raw === null || raw === undefined || typeof raw !== 'object') {
-    return { schemaVersion: 2, byCard };
+  // v2 → v3: add dayHistory to each card
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    (raw as { schemaVersion?: unknown }).schemaVersion === 2
+  ) {
+    const v2 = raw as { schemaVersion: 2; byCard: Record<string, Partial<LetterProgress>> };
+    const byCard: ProgressByCard = {};
+    for (const [id, card] of Object.entries(v2.byCard)) {
+      byCard[id] = { ...defaultLetterProgress(), ...card, dayHistory: [] };
+    }
+    return { schemaVersion: 3, byCard };
   }
 
+  const byCard: ProgressByCard = {};
+  if (raw === null || raw === undefined || typeof raw !== 'object') {
+    return { schemaVersion: 3, byCard };
+  }
+
+  // v1 (legacy flat object) → v3
   const legacy = raw as Record<string, Partial<LetterProgress> | unknown>;
   for (const [id, value] of Object.entries(legacy)) {
     if (value === null || typeof value !== 'object') {
@@ -260,9 +286,10 @@ export function migrateProgress(raw: unknown): ProgressState {
       sprinkleCooldown: 0,
       timeSpentMs: 0,
       firstSeenAt: old.lastSeenAt ?? null,
+      dayHistory: [],
     };
   }
-  return { schemaVersion: 2, byCard };
+  return { schemaVersion: 3, byCard };
 }
 
 export function getUnlockedCards(
