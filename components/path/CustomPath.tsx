@@ -6,6 +6,9 @@ const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '
 function toBanglaNum(value: number): string {
   return String(value).replace(/\d/g, (d) => BANGLA_DIGITS[Number(d)]);
 }
+function cardCountLabel(count: number): string {
+  return `${toBanglaNum(count)}টি কার্ড`;
+}
 
 function masteryBarColor(percent: number): string {
   if (percent === 0) return '#9ca3af';
@@ -101,7 +104,15 @@ export function CustomPath({
                 pressed && customStyles.rowPressed,
               ]}
             >
-              <View style={customStyles.glyphCell}>
+              {/* Letter glyph in colored circle */}
+              <View
+                style={[
+                  customStyles.glyphCell,
+                  state === 'mastered' && customStyles.glyphCellMastered,
+                  state === 'current' && customStyles.glyphCellCurrent,
+                  state === 'locked' && customStyles.glyphCellLocked,
+                ]}
+              >
                 <Text
                   style={[
                     customStyles.glyph,
@@ -116,6 +127,7 @@ export function CustomPath({
                 </Text>
               </View>
 
+              {/* Middle: name + count + bar */}
               <View style={customStyles.midCell}>
                 <View style={customStyles.titleRow}>
                   <Text
@@ -127,19 +139,19 @@ export function CustomPath({
                   >
                     {preset.label}
                   </Text>
-                  <Text style={customStyles.sep}> · </Text>
-                  <StatusDot state={state} />
-                  <Text style={customStyles.sep}> · </Text>
-                  <Text
-                    style={[
-                      customStyles.percent,
-                      state === 'locked' && customStyles.percentLocked,
-                      state === 'mastered' && customStyles.percentMastered,
-                    ]}
-                  >
-                    {toBanglaNum(percent)}%
-                  </Text>
+                  <View style={customStyles.titleMeta}>
+                    <StatusDot state={state} />
+                    <Text
+                      style={[
+                        customStyles.percent,
+                        state === 'mastered' && customStyles.percentMastered,
+                      ]}
+                    >
+                      {toBanglaNum(percent)}%
+                    </Text>
+                  </View>
                 </View>
+                <Text style={customStyles.cardCount}>{cardCountLabel(preset.cards.length)}</Text>
                 <View style={customStyles.barTrack}>
                   <View
                     style={[
@@ -150,13 +162,14 @@ export function CustomPath({
                 </View>
               </View>
 
+              {/* Play button */}
               <Pressable
                 accessibilityLabel={`${preset.label} শুরু করুন`}
                 onPress={() => onSelect(preset.id)}
                 style={({ pressed }) => [
                   customStyles.playBtn,
+                  (state === 'current' || state === 'started') && customStyles.playBtnActive,
                   state === 'mastered' && customStyles.playBtnMastered,
-                  state === 'current' && customStyles.playBtnCurrent,
                   state === 'locked' && customStyles.playBtnLocked,
                   pressed && customStyles.playBtnPressed,
                 ]}
@@ -164,8 +177,8 @@ export function CustomPath({
                 <Text
                   style={[
                     customStyles.playIcon,
+                    (state === 'current' || state === 'started') && customStyles.playIconActive,
                     state === 'mastered' && customStyles.playIconMastered,
-                    state === 'current' && customStyles.playIconCurrent,
                     state === 'locked' && customStyles.playIconLocked,
                   ]}
                 >
@@ -190,7 +203,7 @@ export function CustomPath({
 
 const customStyles = StyleSheet.create({
   column: {
-    gap: 4,
+    gap: 8,
     paddingHorizontal: 4,
   },
 
@@ -199,47 +212,50 @@ const customStyles = StyleSheet.create({
     paddingVertical: 36,
     gap: 8,
   },
-  emptyIcon: {
-    fontSize: 36,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-  },
-  emptyHint: {
-    fontSize: 13,
-    color: '#9ca3af',
-    textAlign: 'center',
-  },
+  emptyIcon: { fontSize: 36 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#374151' },
+  emptyHint: { fontSize: 13, color: '#9ca3af', textAlign: 'center' },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 60,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    minHeight: 72,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     gap: 12,
+    backgroundColor: '#faf6ee',
     borderWidth: 1.5,
     borderColor: 'transparent',
+    shadowColor: '#c4b99a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    elevation: 1,
   },
   rowCurrent: {
-    borderColor: '#111827',
+    borderColor: '#f4512a',
+    backgroundColor: '#fff9f6',
   },
-  rowPressed: {
-    opacity: 0.7,
-  },
+  rowPressed: { opacity: 0.7 },
 
   glyphCell: {
-    width: 40,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#ede8dc',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  glyphCellCurrent: { backgroundColor: '#fde8e0' },
+  glyphCellMastered: { backgroundColor: '#d1fae5' },
+  glyphCellLocked: { backgroundColor: '#f3f4f6' },
+
   glyph: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '900',
     color: '#111827',
+    lineHeight: 32,
   },
   glyphMastered: { color: '#047857' },
   glyphCurrent: { color: '#f4512a' },
@@ -247,34 +263,39 @@ const customStyles = StyleSheet.create({
 
   midCell: {
     flex: 1,
-    gap: 6,
+    gap: 3,
     justifyContent: 'center',
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'nowrap',
+    justifyContent: 'space-between',
+  },
+  titleMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
   },
   label: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111827',
     flexShrink: 1,
   },
   labelLocked: { color: '#9ca3af' },
-  sep: {
-    fontSize: 11,
-    color: '#9ca3af',
-    flexShrink: 0,
-  },
   percent: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#374151',
+    color: '#6b7280',
     flexShrink: 0,
   },
-  percentLocked: { color: '#9ca3af' },
   percentMastered: { color: '#047857' },
+  cardCount: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
 
   dotMastered: { fontSize: 11, color: '#047857', fontWeight: '900', flexShrink: 0 },
   dotCurrent: { fontSize: 10, color: '#f4512a', fontWeight: '900', flexShrink: 0 },
@@ -295,43 +316,43 @@ const customStyles = StyleSheet.create({
   playBtn: {
     width: 44,
     height: 44,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#111827',
+    borderColor: '#d1c9b4',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
+  playBtnActive: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
+  },
   playBtnMastered: { borderColor: '#047857' },
-  playBtnCurrent: { borderColor: '#f4512a' },
-  playBtnLocked: { borderColor: '#d1c9b4' },
+  playBtnLocked: { borderColor: '#e5e7eb' },
   playBtnPressed: {
     opacity: 0.55,
     backgroundColor: '#f0ebe0',
   },
   playIcon: {
-    fontSize: 15,
-    color: '#111827',
+    fontSize: 14,
+    color: '#374151',
     fontWeight: '900',
   },
+  playIconActive: { color: '#ffffff' },
   playIconMastered: { color: '#047857' },
-  playIconCurrent: { color: '#f4512a' },
   playIconLocked: { color: '#d1c9b4' },
 
   createBtn: {
-    marginTop: 8,
-    height: 48,
-    borderRadius: 12,
+    marginTop: 4,
+    height: 52,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: '#d1c9b4',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createBtnPressed: {
-    opacity: 0.6,
-    backgroundColor: '#f0ebe0',
-  },
+  createBtnPressed: { opacity: 0.6, backgroundColor: '#f0ebe0' },
   createBtnText: {
     fontSize: 14,
     fontWeight: '700',
