@@ -3,225 +3,38 @@ import assert from 'node:assert/strict';
 
 import type { LetterCard } from '../data/banglaLetters';
 import {
-  applyActiveSetOnCorrect,
-  applyActiveSetOnMastery,
   applyGrade,
+  buildCycleQueue,
   chooseNextCard,
-  eligibleForSprinkle,
-  initSessionState,
-  isPathComplete,
-  maybeEnterStruggleMode,
-  maybeExitStruggleMode,
-  migrateProgress,
-  tickPostMasteryCounters,
-  tickSprinkleCooldowns,
-  visibilityScore,
-  ACTIVE_SET_START,
-  ACTIVE_SET_STEADY,
-  ACTIVE_SET_STRUGGLE,
-  MASTERY_TARGET,
-  NEW_CARD_BOOST_DURATION,
-  NEW_CARD_BOOST_WEIGHT,
-  NEWLY_MASTERED_QUIET_PERIOD,
-  PENALTY_MAX,
-  SPRINKLE_EVERY_N_CARDS,
-  STRUGGLE_RECOVERY_STREAK,
-  WARMUP_PER_CARD,
+  computeGlobalProgress,
   getProgressForCard,
+  initSessionState,
+  isPresetComplete,
+  getUnlockedCards,
+  migrateProgress,
+  tickCycle,
+  CORRECT_PER_LEVEL,
+  CYCLES_TO_GROW,
+  CYCLE_WRONGS_TO_SHRINK,
+  SESSION_MASTERY_LEVEL,
+  SPACES_INIT,
+  SPACES_MAX,
+  SPACES_MIN,
   type LetterProgress,
   type ProgressByCard,
   type SessionState,
 } from './learning';
 
-const CARD = 'card-1';
-
-function gradeMany(
-  start: ProgressByCard,
-  card: string,
-  outcomes: Array<'c' | 'w'>,
-): ProgressByCard {
-  return outcomes.reduce(
-    (acc, outcome) => applyGrade(acc, card, outcome === 'c'),
-    start,
-  );
-}
-
-test('correct during warm-up does not advance streak', () => {
-  const after = gradeMany({}, CARD, ['c', 'c', 'c', 'c', 'c']);
-  const p = after[CARD];
-  assert.equal(p.correctCount, WARMUP_PER_CARD);
-  assert.equal(p.streak, 0);
-  assert.equal(p.mastered, false);
-});
-
-test('first counted-correct (6th) advances streak to 1', () => {
-  const after = gradeMany({}, CARD, ['c', 'c', 'c', 'c', 'c', 'c']);
-  const p = after[CARD];
-  assert.equal(p.correctCount, WARMUP_PER_CARD + 1);
-  assert.equal(p.streak, 1);
-  assert.equal(p.mastered, false);
-});
-
-test('streak reaches MASTERY_TARGET sets mastered = true', () => {
-  // 5 warm-up + 10 counted = 15 corrects in a row → streak = 10, mastered.
-  const total = WARMUP_PER_CARD + MASTERY_TARGET;
-  const outcomes: Array<'c' | 'w'> = Array.from({ length: total }, () => 'c');
-  const after = gradeMany({}, CARD, outcomes);
-  const p = after[CARD];
-  assert.equal(p.streak, MASTERY_TARGET);
-  assert.equal(p.bestStreak, MASTERY_TARGET);
-  assert.equal(p.mastered, true);
-});
-
-test('mastery is sticky: a subsequent wrong sets streak=0 but mastered stays true', () => {
-  const total = WARMUP_PER_CARD + MASTERY_TARGET;
-  const outcomes: Array<'c' | 'w'> = Array.from({ length: total }, () => 'c');
-  outcomes.push('w');
-  const after = gradeMany({}, CARD, outcomes);
-  const p = after[CARD];
-  assert.equal(p.streak, 0);
-  assert.equal(p.mastered, true);
-  assert.equal(p.bestStreak, MASTERY_TARGET); // best is preserved
-});
-
-test('penalty: 1 on first wrong; doubles on consecutive wrongs; capped at PENALTY_MAX', () => {
-  // 1 wrong  → penalty 1
-  // 2 wrongs → penalty 2
-  // 3 wrongs → penalty 4
-  // 4 wrongs → penalty 8
-  // 5 wrongs → penalty 16
-  // 6 wrongs → penalty 16 (capped)
-  let p = applyGrade({}, CARD, false);
-  assert.equal(p[CARD].penalty, 1);
-  p = applyGrade(p, CARD, false);
-  assert.equal(p[CARD].penalty, 2);
-  p = applyGrade(p, CARD, false);
-  assert.equal(p[CARD].penalty, 4);
-  p = applyGrade(p, CARD, false);
-  assert.equal(p[CARD].penalty, 8);
-  p = applyGrade(p, CARD, false);
-  assert.equal(p[CARD].penalty, PENALTY_MAX);
-  p = applyGrade(p, CARD, false);
-  assert.equal(p[CARD].penalty, PENALTY_MAX);
-  assert.equal(p[CARD].consecutiveMistakes, 6);
-});
-
-test('correct after wrong halves penalty and resets consecutiveMistakes', () => {
-  let p = gradeMany({}, CARD, ['w', 'w', 'w']); // penalty = 4
-  assert.equal(p[CARD].penalty, 4);
-  p = applyGrade(p, CARD, true);
-  assert.equal(p[CARD].penalty, 2); // floor(4/2) = 2
-  assert.equal(p[CARD].consecutiveMistakes, 0);
-});
-
-test('wrong does NOT consume warm-up budget (correctCount unchanged on wrong)', () => {
-  const p = gradeMany({}, CARD, ['c', 'c', 'c', 'c', 'w']);
-  assert.equal(p[CARD].correctCount, 4);
-  assert.equal(p[CARD].wrongCount, 1);
-  assert.equal(p[CARD].streak, 0);
-});
-
-test('migrateProgress: v1 ProgressByCard → v2 envelope preserving achievements', () => {
-  const v1 = {
-    'card-a': {
-      correctCount: 3,
-      wrongCount: 1,
-      seenCount: 4,
-      mastered: true,
-      lastSeenAt: '2026-05-04T12:00:00.000Z',
-    },
-    'card-b': {
-      correctCount: 0,
-      wrongCount: 0,
-      seenCount: 0,
-      mastered: false,
-      lastSeenAt: null,
-    },
-  };
-  const out = migrateProgress(v1);
-  assert.equal(out.schemaVersion, 2);
-
-  const a = out.byCard['card-a'];
-  assert.equal(a.correctCount, 3);
-  assert.equal(a.wrongCount, 1);
-  assert.equal(a.seenCount, 4);
-  assert.equal(a.mastered, true);
-  assert.equal(a.lastSeenAt, '2026-05-04T12:00:00.000Z');
-  assert.equal(a.streak, 0);
-  assert.equal(a.bestStreak, 0);
-  assert.equal(a.penalty, 0);
-  assert.equal(a.consecutiveMistakes, 0);
-  assert.deepEqual(a.recentResults, []);
-  assert.equal(a.attemptsSinceEnteringActive, 0);
-  assert.equal(a.enteredActiveAt, null);
-  assert.equal(a.cardsShownSinceMastered, 999); // already past the quiet period
-  assert.equal(a.sprinkleCooldown, 0);
-  assert.equal(a.timeSpentMs, 0);
-  assert.equal(a.firstSeenAt, '2026-05-04T12:00:00.000Z');
-
-  const b = out.byCard['card-b'];
-  assert.equal(b.cardsShownSinceMastered, 0); // not mastered → 0
-  assert.equal(b.firstSeenAt, null);
-});
-
-test('migrateProgress: v2 → v2 is idempotent (pass-through)', () => {
-  const v2 = {
-    schemaVersion: 2 as const,
-    byCard: {
-      'card-x': {
-        correctCount: 7,
-        wrongCount: 2,
-        seenCount: 9,
-        mastered: false,
-        lastSeenAt: '2026-05-05T10:00:00.000Z',
-        streak: 2,
-        bestStreak: 5,
-        penalty: 4,
-        consecutiveMistakes: 0,
-        recentResults: ['c', 'w', 'c'] as Array<'c' | 'w'>,
-        attemptsSinceEnteringActive: 9,
-        enteredActiveAt: '2026-05-05T09:00:00.000Z',
-        cardsShownSinceMastered: 0,
-        sprinkleCooldown: 0,
-        timeSpentMs: 0,
-        firstSeenAt: '2026-05-05T08:00:00.000Z',
-      },
-    },
-  };
-  const out = migrateProgress(v2);
-  assert.equal(out.schemaVersion, 2);
-  assert.deepEqual(out.byCard, v2.byCard);
-});
-
-test('migrateProgress: empty / undefined / null inputs return empty v2 envelope', () => {
-  for (const input of [undefined, null, {}]) {
-    const out = migrateProgress(input);
-    assert.equal(out.schemaVersion, 2);
-    assert.deepEqual(out.byCard, {});
-  }
-});
-
 // ---------------------------------------------------------------------------
-// CTX-06 — selection logic, active-set lifecycle, struggle mode
+// Helpers
 // ---------------------------------------------------------------------------
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function makePath(n: number): LetterCard[] {
   const path: LetterCard[] = [];
   for (let i = 0; i < n; i++) {
     path.push({
       id: `card-${i + 1}`,
-      letter: String.fromCharCode(0x0985 + i), // arbitrary Bangla letter
+      letter: String.fromCharCode(0x0985 + i),
       group: 'vowel',
       order: i + 1,
     });
@@ -235,397 +48,594 @@ function defaultProgressFor(ids: string[]): ProgressByCard {
   return out;
 }
 
-function withProgress(
-  progress: ProgressByCard,
-  id: string,
-  patch: Partial<LetterProgress>,
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Grade a card multiple times
+function gradeMany(
+  start: ProgressByCard,
+  cardId: string,
+  outcomes: Array<'c' | 'w'>,
 ): ProgressByCard {
-  return { ...progress, [id]: { ...getProgressForCard(progress, id), ...patch } };
+  return outcomes.reduce(
+    (acc, outcome) => applyGrade(acc, cardId, outcome === 'c'),
+    start,
+  );
 }
 
-test('visibilityScore: previous card returns 0 when activeSet.length > 1', () => {
-  const path = makePath(3);
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    previousCardId: 'card-1',
-  };
-  const cardProgress = getProgressForCard({}, 'card-1');
-  const s = visibilityScore(path[0], cardProgress, session);
-  assert.equal(s, 0);
+// ---------------------------------------------------------------------------
+// applyGrade — level progression
+// ---------------------------------------------------------------------------
+
+test('applyGrade: correct answer increments levelCorrect', () => {
+  const p = applyGrade({}, 'card-1', true);
+  assert.equal(p['card-1'].levelCorrect, 1);
+  assert.equal(p['card-1'].level, 0);
 });
 
-test('visibilityScore: previous card returns nonzero when activeSet.length === 1', () => {
-  const path = makePath(3);
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    activeSet: ['card-1'],
-    previousCardId: 'card-1',
-  };
-  const cardProgress = getProgressForCard({}, 'card-1');
-  const s = visibilityScore(path[0], cardProgress, session);
-  assert.ok(s > 0, `expected score > 0 in single-card fallback, got ${s}`);
+test('applyGrade: correct answer increments correctCount and seenCount', () => {
+  const p = applyGrade({}, 'card-1', true);
+  assert.equal(p['card-1'].correctCount, 1);
+  assert.equal(p['card-1'].seenCount, 1);
+  assert.equal(p['card-1'].wrongCount, 0);
 });
 
-test('visibilityScore: mastered card returns 0', () => {
-  const path = makePath(2);
-  const session = initSessionState(path, {});
-  const cardProgress: LetterProgress = {
-    ...getProgressForCard({}, 'card-1'),
-    mastered: true,
-  };
-  const s = visibilityScore(path[0], cardProgress, session);
-  assert.equal(s, 0);
+test('applyGrade: wrong answer increments wrongCount and seenCount', () => {
+  const p = applyGrade({}, 'card-1', false);
+  assert.equal(p['card-1'].wrongCount, 1);
+  assert.equal(p['card-1'].seenCount, 1);
+  assert.equal(p['card-1'].correctCount, 0);
 });
 
-test('visibilityScore: newcomer boost decays from full at attempt 0 to 0 at attempt NEW_CARD_BOOST_DURATION', () => {
-  const path = makePath(3);
-  // session whose previous card is NOT card-1, so anti-repeat doesn't fire
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    previousCardId: 'card-2',
-  };
-
-  const at0 = visibilityScore(
-    path[0],
-    { ...getProgressForCard({}, 'card-1'), attemptsSinceEnteringActive: 0 },
-    session,
-  );
-  const atFull = visibilityScore(
-    path[0],
-    {
-      ...getProgressForCard({}, 'card-1'),
-      attemptsSinceEnteringActive: NEW_CARD_BOOST_DURATION,
-    },
-    session,
-  );
-
-  assert.ok(
-    at0 - atFull >= NEW_CARD_BOOST_WEIGHT - 1e-9,
-    `expected newcomer term contributing ~${NEW_CARD_BOOST_WEIGHT}, got delta ${at0 - atFull}`,
-  );
-  // Half-decay: at duration/2, contribution should be NEW_CARD_BOOST_WEIGHT/2.
-  const atHalf = visibilityScore(
-    path[0],
-    {
-      ...getProgressForCard({}, 'card-1'),
-      attemptsSinceEnteringActive: NEW_CARD_BOOST_DURATION / 2,
-    },
-    session,
-  );
-  assert.ok(
-    Math.abs((atHalf - atFull) - NEW_CARD_BOOST_WEIGHT / 2) < 1e-6,
-    `expected half-decay = ${NEW_CARD_BOOST_WEIGHT / 2}, got ${atHalf - atFull}`,
-  );
+test('applyGrade: after CORRECT_PER_LEVEL correct answers, level advances 0→1 and levelCorrect resets', () => {
+  const outcomes: Array<'c'> = Array(CORRECT_PER_LEVEL).fill('c');
+  const p = gradeMany({}, 'card-1', outcomes);
+  assert.equal(p['card-1'].level, 1);
+  assert.equal(p['card-1'].levelCorrect, 0);
 });
 
-test('chooseNextCard: never returns previousCardId when activeSet.length > 1 over 200 trials', () => {
-  const path = makePath(3);
-  const progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
-  const session: SessionState = {
-    ...initSessionState(path, progress),
-    activeSet: ['card-1', 'card-2'],
-    previousCardId: 'card-1',
-  };
-  const rng = mulberry32(42);
-  for (let i = 0; i < 200; i++) {
-    const chosen = chooseNextCard(path, progress, 'card-1', session, rng);
-    assert.notEqual(chosen.id, 'card-1');
-  }
+test('applyGrade: after 2*CORRECT_PER_LEVEL correct answers, level advances to 2 and mastered=true', () => {
+  const outcomes: Array<'c'> = Array(CORRECT_PER_LEVEL * 2).fill('c');
+  const p = gradeMany({}, 'card-1', outcomes);
+  assert.equal(p['card-1'].level, SESSION_MASTERY_LEVEL);
+  assert.equal(p['card-1'].mastered, true);
+  assert.equal(p['card-1'].levelCorrect, 0);
 });
 
-test('chooseNextCard: weighted distribution favors highest-score card', () => {
-  // Construct two cards where card-1 has a high score, card-2 has roughly half.
-  // Use attemptsSinceEnteringActive to scale the boost term:
-  //   card-1: attempts=0  → boost = 8
-  //   card-2: attempts=4  → boost = 4
-  // Both cards get W_BASE=1 + freshness=2.5 (recent.length=0). So:
-  //   card-1 score ≈ 1 + 8 + 2.5 = 11.5
-  //   card-2 score ≈ 1 + 4 + 2.5 = 7.5
-  // That's not "half" exactly. Tweak: card-1 attempts=0, card-2 attempts=6 → boost 2.
-  //   card-1 ≈ 1 + 8 + 2.5 = 11.5
-  //   card-2 ≈ 1 + 2 + 2.5 = 5.5  → roughly half.
-  const path = makePath(2);
-  const progress: ProgressByCard = {
-    'card-1': { ...getProgressForCard({}, 'card-1'), attemptsSinceEnteringActive: 0 },
-    'card-2': { ...getProgressForCard({}, 'card-2'), attemptsSinceEnteringActive: 6 },
-  };
-  const session: SessionState = {
-    ...initSessionState(path, progress),
-    activeSet: ['card-1', 'card-2'],
-    previousCardId: null,
-  };
-
-  const rng = mulberry32(0xc0ffee);
-  let topCount = 0;
-  const trials = 1000;
-  for (let i = 0; i < trials; i++) {
-    const chosen = chooseNextCard(path, progress, '', session, rng);
-    if (chosen.id === 'card-1') topCount += 1;
-  }
-  const ratio = topCount / trials;
-  assert.ok(
-    ratio >= 0.35,
-    `expected top card chosen ≥ 35% of the time, got ${(ratio * 100).toFixed(1)}%`,
-  );
+test('applyGrade: wrong answer resets levelCorrect to 0 but does NOT change level', () => {
+  // Get to level 1 with 2 correct in that level
+  const outcomes: Array<'c' | 'w'> = [
+    ...Array(CORRECT_PER_LEVEL).fill('c'), // advance to level 1
+    'c', 'c',                              // 2 correct in level 1
+    'w',                                   // wrong
+  ];
+  const p = gradeMany({}, 'card-1', outcomes);
+  assert.equal(p['card-1'].level, 1);          // level unchanged
+  assert.equal(p['card-1'].levelCorrect, 0);   // reset
 });
 
-test('chooseNextCard: single-card fallback returns the only card', () => {
-  const path = makePath(3);
-  const progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
-  const session: SessionState = {
-    ...initSessionState(path, progress),
-    activeSet: ['card-2'],
-    previousCardId: 'card-2',
-  };
-  const chosen = chooseNextCard(path, progress, 'card-2', session, () => 0);
-  assert.equal(chosen.id, 'card-2');
+test('applyGrade: wrong answer sets wrongFlag=true; correct answer sets wrongFlag=false', () => {
+  let p = applyGrade({}, 'card-1', false);
+  assert.equal(p['card-1'].wrongFlag, true);
+
+  p = applyGrade(p, 'card-1', true);
+  assert.equal(p['card-1'].wrongFlag, false);
 });
 
-test('applyActiveSetOnCorrect: first counted-correct grows from 2 → 3', () => {
-  const path = makePath(5);
-  const session = initSessionState(path, {});
-  assert.equal(session.activeSet.length, ACTIVE_SET_START);
-  const cardProgress = getProgressForCard({}, 'card-1');
-  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path, {});
-  assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
-  assert.equal(next.activeSet[2], 'card-3');
+test('applyGrade: mastered is sticky — wrong after mastery does not clear mastered', () => {
+  const outcomes: Array<'c'> = Array(CORRECT_PER_LEVEL * 2).fill('c');
+  let p = gradeMany({}, 'card-1', outcomes);
+  assert.equal(p['card-1'].mastered, true);
+
+  p = applyGrade(p, 'card-1', false);
+  assert.equal(p['card-1'].mastered, true);  // still true
 });
 
-test('applyActiveSetOnCorrect: subsequent counted-corrects do NOT grow further', () => {
-  const path = makePath(5);
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    activeSet: ['card-1', 'card-2', 'card-3'],
-  };
-  const cardProgress = getProgressForCard({}, 'card-1');
-  const next = applyActiveSetOnCorrect(session, 'card-1', cardProgress, path, {});
-  assert.equal(next.activeSet.length, ACTIVE_SET_STEADY);
-  assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
-});
-
-test('applyActiveSetOnMastery: mastered card removed; next path card appended', () => {
-  const path = makePath(5);
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    activeSet: ['card-1', 'card-2', 'card-3'],
-  };
-  const next = applyActiveSetOnMastery(session, 'card-2', path, {});
-  assert.ok(!next.activeSet.includes('card-2'), 'mastered card removed');
-  assert.equal(next.activeSet.length, 3);
-  assert.equal(next.activeSet[next.activeSet.length - 1], 'card-4');
-});
-
-test('maybeEnterStruggleMode: 2 wrongs in last 6 enters; active set shrinks to top 2 by struggleScore', () => {
-  const path = makePath(4);
-  // Three active cards; card-2 has highest struggleScore (consecutiveMistakes & penalty).
-  let progress = defaultProgressFor(['card-1', 'card-2', 'card-3']);
-  progress = withProgress(progress, 'card-2', {
-    consecutiveMistakes: 2,
-    penalty: 4,
-    recentResults: ['w', 'w'],
-  });
-  progress = withProgress(progress, 'card-3', {
-    consecutiveMistakes: 1,
-    penalty: 1,
-    recentResults: ['w'],
-  });
-  // card-1 stays clean.
-
-  const session: SessionState = {
-    ...initSessionState(path, progress),
-    activeSet: ['card-1', 'card-2', 'card-3'],
-    recentGrades: ['w', 'c', 'w'], // 2 wrongs in last window
-  };
-  const next = maybeEnterStruggleMode(session, progress, path);
-  assert.equal(next.inStruggleMode, true);
-  assert.equal(next.activeSet.length, ACTIVE_SET_STRUGGLE);
-  // Top 2 by struggleScore: card-2 (2*3+4+2=12) and card-3 (1*3+1+1=5).
-  assert.deepEqual(new Set(next.activeSet), new Set(['card-2', 'card-3']));
-  assert.deepEqual(next.prePushedActiveSet, ['card-1', 'card-2', 'card-3']);
-});
-
-test('maybeExitStruggleMode: 6 consecutive correct exits; active set restored', () => {
-  const path = makePath(4);
-  const session: SessionState = {
-    ...initSessionState(path, {}),
-    activeSet: ['card-2', 'card-3'],
-    prePushedActiveSet: ['card-1', 'card-2', 'card-3'],
-    inStruggleMode: true,
-    consecutiveCorrectInSession: STRUGGLE_RECOVERY_STREAK,
-  };
-  const next = maybeExitStruggleMode(session, path);
-  assert.equal(next.inStruggleMode, false);
-  assert.deepEqual(next.activeSet, ['card-1', 'card-2', 'card-3']);
-  assert.equal(next.prePushedActiveSet, null);
+test('applyGrade: dayHistory grows only once per calendar day', () => {
+  // Two correct answers in the same test run — same day
+  let p = applyGrade({}, 'card-1', true);
+  p = applyGrade(p, 'card-1', true);
+  assert.equal(p['card-1'].dayHistory.length, 1);
 });
 
 // ---------------------------------------------------------------------------
-// CTX-07 — sprinkle, path-complete, post-mastery counters
+// buildCycleQueue — ordering rules
 // ---------------------------------------------------------------------------
 
-function masteredProgress(
-  id: string,
-  patch: Partial<LetterProgress> = {},
-): LetterProgress {
-  return {
-    ...getProgressForCard({}, id),
-    mastered: true,
-    cardsShownSinceMastered: NEWLY_MASTERED_QUIET_PERIOD,
-    sprinkleCooldown: 0,
-    ...patch,
-  };
-}
-
-test('eligibleForSprinkle: returns false for un-mastered cards', () => {
-  const path = makePath(2);
-  const state: SessionState = {
-    ...initSessionState(path, {}),
-    cardsShown: SPRINKLE_EVERY_N_CARDS,
-  };
-  const cardProgress: LetterProgress = {
-    ...getProgressForCard({}, 'card-1'),
-    mastered: false,
-  };
-  assert.equal(eligibleForSprinkle(cardProgress, state), false);
-});
-
-test('eligibleForSprinkle: returns false during quiet period', () => {
-  const path = makePath(2);
-  const state: SessionState = {
-    ...initSessionState(path, {}),
-    cardsShown: SPRINKLE_EVERY_N_CARDS,
-  };
-  const cardProgress = masteredProgress('card-1', {
-    cardsShownSinceMastered: NEWLY_MASTERED_QUIET_PERIOD - 1,
-  });
-  assert.equal(eligibleForSprinkle(cardProgress, state), false);
-});
-
-test('eligibleForSprinkle: returns false during struggle mode', () => {
-  const path = makePath(2);
-  const state: SessionState = {
-    ...initSessionState(path, {}),
-    cardsShown: SPRINKLE_EVERY_N_CARDS,
-    inStruggleMode: true,
-  };
-  const cardProgress = masteredProgress('card-1');
-  assert.equal(eligibleForSprinkle(cardProgress, state), false);
-});
-
-test('eligibleForSprinkle: returns true on the 7th card when cooldown=0 + quiet period passed', () => {
-  const path = makePath(2);
-  const state: SessionState = {
-    ...initSessionState(path, {}),
-    cardsShown: SPRINKLE_EVERY_N_CARDS,
-    inStruggleMode: false,
-  };
-  const cardProgress = masteredProgress('card-1');
-  assert.equal(eligibleForSprinkle(cardProgress, state), true);
-});
-
-test('eligibleForSprinkle: returns false when cooldown > 0', () => {
-  const path = makePath(2);
-  const state: SessionState = {
-    ...initSessionState(path, {}),
-    cardsShown: SPRINKLE_EVERY_N_CARDS,
-  };
-  const cardProgress = masteredProgress('card-1', { sprinkleCooldown: 5 });
-  assert.equal(eligibleForSprinkle(cardProgress, state), false);
-});
-
-test('tickSprinkleCooldowns: decrements mastered cards; floors at 0; un-mastered untouched; just-shown unaffected', () => {
-  const progress: ProgressByCard = {
-    'card-1': masteredProgress('card-1', { sprinkleCooldown: 5 }),
-    'card-2': masteredProgress('card-2', { sprinkleCooldown: 0 }),
-    'card-3': masteredProgress('card-3', { sprinkleCooldown: 12 }),
-    'card-4': { ...getProgressForCard({}, 'card-4'), sprinkleCooldown: 9 }, // unmastered
-  };
-  const next = tickSprinkleCooldowns(progress, 'card-3');
-  assert.equal(next['card-1'].sprinkleCooldown, 4); // decremented
-  assert.equal(next['card-2'].sprinkleCooldown, 0); // floored
-  assert.equal(next['card-3'].sprinkleCooldown, 12); // just-shown unchanged
-  assert.equal(next['card-4'].sprinkleCooldown, 9); // un-mastered unchanged
-});
-
-test('tickPostMasteryCounters: increments cardsShownSinceMastered for mastered cards only', () => {
-  const progress: ProgressByCard = {
-    'card-1': masteredProgress('card-1', { cardsShownSinceMastered: 3 }),
-    'card-2': { ...getProgressForCard({}, 'card-2'), cardsShownSinceMastered: 0 },
-  };
-  const next = tickPostMasteryCounters(progress);
-  assert.equal(next['card-1'].cardsShownSinceMastered, 4);
-  assert.equal(next['card-2'].cardsShownSinceMastered, 0); // un-mastered untouched
-});
-
-test('isPathComplete: true iff every path card is mastered', () => {
+test('buildCycleQueue: result length equals spaces.length', () => {
   const path = makePath(3);
-  let progress: ProgressByCard = {};
-  assert.equal(isPathComplete(path, progress), false);
-
-  progress = {
-    'card-1': masteredProgress('card-1'),
-    'card-2': masteredProgress('card-2'),
-  };
-  assert.equal(isPathComplete(path, progress), false); // card-3 missing
-
-  progress = {
-    'card-1': masteredProgress('card-1'),
-    'card-2': masteredProgress('card-2'),
-    'card-3': masteredProgress('card-3'),
-  };
-  assert.equal(isPathComplete(path, progress), true);
-});
-
-test('chooseNextCard in path-complete state: returns a mastered card; respects anti-repeat', () => {
-  const path = makePath(3);
-  const progress: ProgressByCard = {
-    'card-1': masteredProgress('card-1'),
-    'card-2': masteredProgress('card-2'),
-    'card-3': masteredProgress('card-3'),
-  };
-  // empty active set → forces path-complete fallback inside chooseNextCard
-  const session: SessionState = {
-    ...initSessionState(path, progress),
-    activeSet: [],
-    previousCardId: 'card-1',
-  };
-  const rng = mulberry32(7);
-  const masteredIds = new Set(['card-1', 'card-2', 'card-3']);
-  for (let i = 0; i < 100; i++) {
-    const chosen = chooseNextCard(path, progress, 'card-1', session, rng);
-    assert.ok(masteredIds.has(chosen.id), `chosen must be mastered: ${chosen.id}`);
-    assert.notEqual(chosen.id, 'card-1', 'anti-repeat must hold');
-  }
-});
-
-// ---------------------------------------------------------------------------
-// DIAG-01 — Variety regression guard
-//
-// Baseline (ACTIVE_SET_START=2): { 'card-1': 25, 'card-2': 25 } — distinct: 2
-// Hypothesis (a) confirmed: active set never grew past 2 during warm-up.
-// Fix: ACTIVE_SET_START raised 2→3 so sessions begin with 3 cards immediately.
-// Post-fix: distinct ≥ 3 in 30 all-correct picks.
-// ---------------------------------------------------------------------------
-
-test('DIAG-01: variety histogram — no card dominates', () => {
-  const rng = mulberry32(42);
-  const path = makePath(10);
   const progress = defaultProgressFor(path.map((c) => c.id));
-  let session = initSessionState(path, progress);
-  let prog = progress;
-  const picks: string[] = [];
+  const spaces = ['card-1', 'card-2', 'card-3'];
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  assert.equal(queue.length, spaces.length);
+});
 
-  for (let i = 0; i < 30; i++) {
-    const card = chooseNextCard(path, prog, session.previousCardId ?? '', session, rng);
-    picks.push(card.id);
-    prog = applyGrade(prog, card.id, true); // all correct
-    session = {
-      ...session,
-      cardsShown: session.cardsShown + 1,
-      previousCardId: card.id,
+test('buildCycleQueue: cards with wrongFlag=true appear before cards without', () => {
+  const spaces = ['card-1', 'card-2', 'card-3'];
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), wrongFlag: false },
+    'card-2': { ...getProgressForCard({}, 'card-2'), wrongFlag: true },
+    'card-3': { ...getProgressForCard({}, 'card-3'), wrongFlag: false },
+  };
+  const queue = buildCycleQueue(spaces, progress, [], 0, mulberry32(1));
+  // card-2 must be first (only wrongFlag card)
+  assert.equal(queue[0], 'card-2');
+});
+
+test('buildCycleQueue: anti-repeat — avoids same order as last cycle (3+ cards)', () => {
+  const spaces = ['card-1', 'card-2', 'card-3'];
+  const progress = defaultProgressFor(spaces);
+  // Build first queue
+  const first = buildCycleQueue(spaces, progress, [], 0, mulberry32(42));
+  // Build second queue with first as history — must differ at least sometimes
+  // Run multiple times to confirm anti-repeat logic fires
+  let differentFound = false;
+  for (let i = 0; i < 10; i++) {
+    const second = buildCycleQueue(spaces, progress, [first], 0, mulberry32(i));
+    if (second.join(',') !== first.join(',')) {
+      differentFound = true;
+      break;
+    }
+  }
+  assert.ok(differentFound, 'anti-repeat should produce a different order at least once');
+});
+
+// ---------------------------------------------------------------------------
+// tickCycle — space lifecycle
+// ---------------------------------------------------------------------------
+
+test('tickCycle: after CYCLES_TO_GROW all-correct cycles, a new card enters from waitingPool (Trigger A)', () => {
+  const path = makePath(5);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+
+  let session = initSessionState(path, progress, mulberry32(1));
+  assert.equal(session.spaces.length, SPACES_INIT);
+  assert.equal(session.waitingPool.length, 3);
+
+  // Simulate CYCLES_TO_GROW all-correct cycles
+  for (let i = 0; i < CYCLES_TO_GROW; i++) {
+    session = tickCycle(
+      { ...session, currentCycleWrongs: 0, cycleCount: session.cycleCount },
+      progress,
+      path,
+      mulberry32(i + 1),
+    );
+  }
+
+  assert.equal(session.spaces.length, SPACES_INIT + 1, 'spaces should grow by 1 after Trigger A');
+  assert.equal(session.waitingPool.length, 2, 'one card removed from waitingPool');
+});
+
+test('tickCycle: if wrong occurred in cycle, cycleCount resets to 0 (no growth)', () => {
+  const path = makePath(5);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  let session = initSessionState(path, progress, mulberry32(1));
+
+  // Run 2 all-correct cycles first (cycleCount = 2)
+  for (let i = 0; i < 2; i++) {
+    session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(i));
+  }
+  assert.equal(session.cycleCount, 2);
+
+  // Run one cycle with a wrong — cycleCount should reset
+  session = tickCycle({ ...session, currentCycleWrongs: 1 }, progress, path, mulberry32(99));
+  assert.equal(session.cycleCount, 0, 'wrong in cycle resets cycleCount');
+  assert.equal(session.spaces.length, SPACES_INIT, 'spaces should not grow');
+});
+
+test('tickCycle: card reaching SESSION_MASTERY_LEVEL moves to graduatedPool; next from waitingPool enters (Trigger B)', () => {
+  const path = makePath(4);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+
+  let session = initSessionState(path, progress, mulberry32(1));
+  // Manually mark card-1 as mastered (level >= SESSION_MASTERY_LEVEL)
+  const masteredProgress: ProgressByCard = {
+    ...progress,
+    'card-1': { ...getProgressForCard(progress, 'card-1'), level: SESSION_MASTERY_LEVEL, mastered: true },
+  };
+
+  session = tickCycle(
+    { ...session, currentCycleWrongs: 0 },
+    masteredProgress,
+    path,
+    mulberry32(1),
+  );
+
+  assert.ok(session.graduatedPool.includes('card-1'), 'card-1 should be in graduatedPool');
+  assert.ok(!session.spaces.includes('card-1'), 'card-1 should no longer be in spaces');
+  assert.equal(session.spaces.length, SPACES_INIT, 'spaces length maintained after backfill');
+});
+
+test('tickCycle: shrink — if currentCycleWrongs > CYCLE_WRONGS_TO_SHRINK and spaces > SPACES_MIN, weakest card removed', () => {
+  const path = makePath(4);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+
+  // Start with 3 spaces (grow first)
+  let session = initSessionState(path, progress, mulberry32(1));
+  // Force 3 spaces by running CYCLES_TO_GROW all-correct cycles
+  for (let i = 0; i < CYCLES_TO_GROW; i++) {
+    session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(i));
+  }
+  assert.equal(session.spaces.length, SPACES_INIT + 1, 'spaces should be 3 before shrink test');
+
+  // Now fire a cycle with wrongs > CYCLE_WRONGS_TO_SHRINK
+  const prevSpacesLen = session.spaces.length;
+  session = tickCycle(
+    { ...session, currentCycleWrongs: CYCLE_WRONGS_TO_SHRINK + 1 },
+    progress,
+    path,
+    mulberry32(99),
+  );
+
+  assert.equal(session.spaces.length, prevSpacesLen - 1, 'spaces should shrink by 1');
+});
+
+test('tickCycle: after Trigger B graduation backfill, cycleCount resets to 0', () => {
+  const path = makePath(4);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+
+  let session = initSessionState(path, progress, mulberry32(1));
+  // Run 2 all-correct cycles (cycleCount = 2)
+  for (let i = 0; i < 2; i++) {
+    session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(i));
+  }
+  assert.equal(session.cycleCount, 2);
+
+  // Mark card-1 as mastered so Trigger B fires
+  const masteredProgress: ProgressByCard = {
+    ...progress,
+    'card-1': { ...getProgressForCard(progress, 'card-1'), level: SESSION_MASTERY_LEVEL, mastered: true },
+  };
+
+  session = tickCycle(
+    { ...session, currentCycleWrongs: 0 },
+    masteredProgress,
+    path,
+    mulberry32(5),
+  );
+
+  assert.equal(session.cycleCount, 0, 'cycleCount should reset after Trigger B backfill');
+});
+
+test('tickCycle: cycleIndex resets to 0 after tickCycle', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  let session = initSessionState(path, progress, mulberry32(1));
+  // Advance cycleIndex manually
+  session = { ...session, cycleIndex: 2 };
+  session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(1));
+  assert.equal(session.cycleIndex, 0);
+});
+
+test('tickCycle: currentCycleWrongs resets to 0 after tickCycle', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  let session = initSessionState(path, progress, mulberry32(1));
+  session = { ...session, currentCycleWrongs: 2 };
+  session = tickCycle(session, progress, path, mulberry32(1));
+  assert.equal(session.currentCycleWrongs, 0);
+});
+
+test('tickCycle: currentCycleIndex increments after tickCycle', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  let session = initSessionState(path, progress, mulberry32(1));
+  const prevIndex = session.currentCycleIndex;
+  session = tickCycle({ ...session, currentCycleWrongs: 0 }, progress, path, mulberry32(1));
+  assert.equal(session.currentCycleIndex, prevIndex + 1);
+});
+
+// ---------------------------------------------------------------------------
+// initSessionState
+// ---------------------------------------------------------------------------
+
+test('initSessionState: spaces starts with first SPACES_INIT unmastered cards', () => {
+  const path = makePath(5);
+  const session = initSessionState(path, {}, mulberry32(1));
+  assert.equal(session.spaces.length, SPACES_INIT);
+  assert.equal(session.spaces[0], 'card-1');
+  assert.equal(session.spaces[1], 'card-2');
+});
+
+test('initSessionState: waitingPool contains remaining unmastered cards', () => {
+  const path = makePath(5);
+  const session = initSessionState(path, {}, mulberry32(1));
+  assert.equal(session.waitingPool.length, 3); // 5 - SPACES_INIT(2) = 3
+  assert.equal(session.waitingPool[0], 'card-3');
+  assert.equal(session.waitingPool[1], 'card-4');
+  assert.equal(session.waitingPool[2], 'card-5');
+});
+
+test('initSessionState: graduatedPool contains already-mastered cards', () => {
+  const path = makePath(4);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true, level: SESSION_MASTERY_LEVEL },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true, level: SESSION_MASTERY_LEVEL },
+  };
+  const session = initSessionState(path, progress, mulberry32(1));
+  assert.ok(session.graduatedPool.includes('card-1'));
+  assert.ok(session.graduatedPool.includes('card-2'));
+  assert.equal(session.graduatedPool.length, 2);
+});
+
+test('initSessionState: cycleQueue has exactly SPACES_INIT entries', () => {
+  const path = makePath(5);
+  const session = initSessionState(path, {}, mulberry32(1));
+  assert.equal(session.cycleQueue.length, SPACES_INIT);
+});
+
+test('initSessionState: cycleIndex=0, cycleCount=0, currentCycleIndex=0', () => {
+  const path = makePath(3);
+  const session = initSessionState(path, {}, mulberry32(1));
+  assert.equal(session.cycleIndex, 0);
+  assert.equal(session.cycleCount, 0);
+  assert.equal(session.currentCycleIndex, 0);
+});
+
+// ---------------------------------------------------------------------------
+// chooseNextCard
+// ---------------------------------------------------------------------------
+
+test('chooseNextCard: returns card at session.cycleQueue[session.cycleIndex]', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  const session = initSessionState(path, progress, mulberry32(1));
+
+  const expectedId = session.cycleQueue[session.cycleIndex];
+  const chosen = chooseNextCard(path, progress, '', session, mulberry32(1));
+  assert.equal(chosen.id, expectedId);
+});
+
+test('chooseNextCard: falls back gracefully when cycleQueue is empty — returns unmastered card', () => {
+  const path = makePath(3);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  const session: SessionState = {
+    ...initSessionState(path, progress, mulberry32(1)),
+    cycleQueue: [],
+    cycleIndex: 0,
+  };
+  const chosen = chooseNextCard(path, progress, '', session, mulberry32(1));
+  // Should return some unmastered card, not throw
+  assert.ok(path.some((c) => c.id === chosen.id));
+});
+
+test('chooseNextCard: no session provided — returns a valid card from the path', () => {
+  const path = makePath(4);
+  const progress = defaultProgressFor(path.map((c) => c.id));
+  const chosen = chooseNextCard(path, progress, '', undefined, mulberry32(7));
+  assert.ok(path.some((c) => c.id === chosen.id));
+});
+
+// ---------------------------------------------------------------------------
+// computeGlobalProgress
+// ---------------------------------------------------------------------------
+
+test('computeGlobalProgress: 0% when no correct answers', () => {
+  const path = makePath(3);
+  const result = computeGlobalProgress({}, path);
+  assert.equal(result.percent, 0);
+  assert.equal(result.earned, 0);
+});
+
+test('computeGlobalProgress: 100% when all cards have earned PER_LETTER_EFFECTIVE_MAX points', () => {
+  // PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL = 3 * 5 = 15
+  // A card at level=SESSION_MASTERY_LEVEL+1 earns (2+1)*5 = 15, which equals the max per letter.
+  const path = makePath(3);
+  const progress: ProgressByCard = {};
+  for (const card of path) {
+    progress[card.id] = {
+      ...getProgressForCard({}, card.id),
+      level: SESSION_MASTERY_LEVEL + 1, // level 3 → earns 15 = PER_LETTER_EFFECTIVE_MAX
+      levelCorrect: 0,
+      mastered: true,
     };
   }
+  const result = computeGlobalProgress(progress, path);
+  assert.equal(result.percent, 100);
+});
 
-  const distinct = new Set(picks).size;
-  assert.ok(distinct >= 3, `expected ≥3 distinct cards in 30 picks, got ${distinct}`);
+test('computeGlobalProgress: mid-session partial calculation', () => {
+  // PER_LETTER_EFFECTIVE_MAX = (SESSION_MASTERY_LEVEL + 1) * CORRECT_PER_LEVEL = 3 * 5 = 15
+  // 1 card at level=1, levelCorrect=2 → earned = 1*5 + 2 = 7
+  // 1 card at level=0, levelCorrect=0 → earned = 0
+  // max = 2 * 15 = 30
+  // percent = round(7/30 * 100) = round(23.33) = 23
+  const path = makePath(2);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), level: 1, levelCorrect: 2 },
+    'card-2': { ...getProgressForCard({}, 'card-2'), level: 0, levelCorrect: 0 },
+  };
+  const result = computeGlobalProgress(progress, path);
+  assert.equal(result.earned, 7);
+  assert.equal(result.max, 30);
+  assert.equal(result.percent, 23);
+});
+
+test('computeGlobalProgress: never exceeds 100%', () => {
+  const path = makePath(2);
+  const progress: ProgressByCard = {};
+  // Force absurdly high level values
+  for (const card of path) {
+    progress[card.id] = { ...getProgressForCard({}, card.id), level: 99, levelCorrect: 99 };
+  }
+  const result = computeGlobalProgress(progress, path);
+  assert.ok(result.percent <= 100);
+});
+
+// ---------------------------------------------------------------------------
+// migrateProgress
+// ---------------------------------------------------------------------------
+
+test('migrateProgress: null → { schemaVersion: 4, byCard: {} }', () => {
+  const out = migrateProgress(null);
+  assert.equal(out.schemaVersion, 4);
+  assert.deepEqual(out.byCard, {});
+});
+
+test('migrateProgress: undefined → { schemaVersion: 4, byCard: {} }', () => {
+  const out = migrateProgress(undefined);
+  assert.equal(out.schemaVersion, 4);
+  assert.deepEqual(out.byCard, {});
+});
+
+test('migrateProgress: v4 input passes through with missing fields filled from defaults', () => {
+  const v4 = {
+    schemaVersion: 4 as const,
+    byCard: {
+      'card-x': {
+        correctCount: 3,
+        wrongCount: 1,
+        seenCount: 4,
+        mastered: false,
+        lastSeenAt: '2026-05-11T10:00:00.000Z',
+        firstSeenAt: '2026-05-11T09:00:00.000Z',
+        dayHistory: ['2026-05-11'],
+        level: 0,
+        levelCorrect: 3,
+        wrongFlag: false,
+        lastShownCycleIndex: 2,
+      },
+    },
+  };
+  const out = migrateProgress(v4);
+  assert.equal(out.schemaVersion, 4);
+  assert.equal(out.byCard['card-x'].correctCount, 3);
+  assert.equal(out.byCard['card-x'].level, 0);
+  assert.equal(out.byCard['card-x'].levelCorrect, 3);
+});
+
+test('migrateProgress: v3 mastered card → level=SESSION_MASTERY_LEVEL, schemaVersion=4', () => {
+  const v3 = {
+    schemaVersion: 3 as const,
+    byCard: {
+      'card-a': {
+        correctCount: 15,
+        wrongCount: 2,
+        seenCount: 17,
+        mastered: true,
+        lastSeenAt: '2026-05-10T12:00:00.000Z',
+        firstSeenAt: '2026-05-09T12:00:00.000Z',
+        dayHistory: ['2026-05-09', '2026-05-10'],
+        streak: 10,
+      },
+    },
+  };
+  const out = migrateProgress(v3);
+  assert.equal(out.schemaVersion, 4);
+  assert.equal(out.byCard['card-a'].level, SESSION_MASTERY_LEVEL);
+  assert.equal(out.byCard['card-a'].mastered, true);
+  assert.equal(out.byCard['card-a'].wrongFlag, false);
+});
+
+test('migrateProgress: v3 non-mastered with correctCount >= CORRECT_PER_LEVEL → level 1', () => {
+  const v3 = {
+    schemaVersion: 3 as const,
+    byCard: {
+      'card-b': {
+        correctCount: CORRECT_PER_LEVEL + 2, // past level 0 threshold
+        wrongCount: 1,
+        seenCount: CORRECT_PER_LEVEL + 3,
+        mastered: false,
+        lastSeenAt: null,
+        firstSeenAt: null,
+        dayHistory: [],
+        streak: 3,
+      },
+    },
+  };
+  const out = migrateProgress(v3);
+  assert.equal(out.schemaVersion, 4);
+  assert.equal(out.byCard['card-b'].level, 1);
+  assert.equal(out.byCard['card-b'].mastered, false);
+});
+
+test('migrateProgress: v3 non-mastered with correctCount < CORRECT_PER_LEVEL → level 0', () => {
+  const v3 = {
+    schemaVersion: 3 as const,
+    byCard: {
+      'card-c': {
+        correctCount: 2,
+        wrongCount: 0,
+        seenCount: 2,
+        mastered: false,
+        lastSeenAt: null,
+        firstSeenAt: null,
+        dayHistory: [],
+        streak: 0,
+      },
+    },
+  };
+  const out = migrateProgress(v3);
+  assert.equal(out.schemaVersion, 4);
+  assert.equal(out.byCard['card-c'].level, 0);
+  assert.equal(out.byCard['card-c'].levelCorrect, 2);
+});
+
+// ---------------------------------------------------------------------------
+// isPresetComplete
+// ---------------------------------------------------------------------------
+
+test('isPresetComplete: false when any card is unmastered', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true },
+    // card-3 not mastered
+  };
+  assert.equal(isPresetComplete(path, progress), false);
+});
+
+test('isPresetComplete: false when progress is empty', () => {
+  const path = makePath(2);
+  assert.equal(isPresetComplete(path, {}), false);
+});
+
+test('isPresetComplete: true when all cards have mastered=true', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true },
+  };
+  assert.equal(isPresetComplete(path, progress), true);
+});
+
+// ---------------------------------------------------------------------------
+// getUnlockedCards
+// ---------------------------------------------------------------------------
+
+test('getUnlockedCards: returns only unmastered cards when some are unmastered', () => {
+  const path = makePath(4);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true },
+  };
+  const unlocked = getUnlockedCards(path, progress);
+  assert.equal(unlocked.length, 2);
+  assert.ok(unlocked.every((c) => c.id === 'card-3' || c.id === 'card-4'));
+});
+
+test('getUnlockedCards: returns ALL cards when all are mastered', () => {
+  const path = makePath(3);
+  const progress: ProgressByCard = {
+    'card-1': { ...getProgressForCard({}, 'card-1'), mastered: true },
+    'card-2': { ...getProgressForCard({}, 'card-2'), mastered: true },
+    'card-3': { ...getProgressForCard({}, 'card-3'), mastered: true },
+  };
+  const unlocked = getUnlockedCards(path, progress);
+  assert.equal(unlocked.length, 3);
+});
+
+test('getUnlockedCards: returns all cards when progress is empty (none mastered)', () => {
+  const path = makePath(3);
+  const unlocked = getUnlockedCards(path, {});
+  assert.equal(unlocked.length, 3);
 });
