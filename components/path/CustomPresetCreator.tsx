@@ -25,6 +25,7 @@ export type CustomPresetCreatorProps = {
   visible: boolean;
   onClose: () => void;
   onSave: (preset: CustomPreset) => void;
+  preset?: CustomPreset;
 };
 
 type OrderedCard =
@@ -38,10 +39,22 @@ const LETTER_SECTIONS: { label: string; cards: LetterCard[] }[] = [
   { label: 'সংখ্যা', cards: NUMBER_CARDS },
 ];
 
-export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCreatorProps) {
+export function CustomPresetCreator({ visible, onClose, onSave, preset }: CustomPresetCreatorProps) {
   const [name, setName] = useState('');
   const [orderedCards, setOrderedCards] = useState<OrderedCard[]>([]);
   const [wordInput, setWordInput] = useState('');
+
+  useEffect(() => {
+    if (!visible || !preset) return;
+    setName(preset.label);
+    setOrderedCards(
+      preset.cards.map((card) =>
+        card.group === 'word'
+          ? { type: 'word' as const, id: card.id, word: card.letter }
+          : { type: 'letter' as const, card },
+      ),
+    );
+  }, [visible, preset]);
 
   function reset() {
     setName('');
@@ -87,13 +100,11 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
   }
 
   function handleSave() {
-    const newPreset: CustomPreset = {
-      id: `custom-${Date.now()}`,
-      label: name.trim(),
-      cards: buildCards(orderedCards),
-      createdAt: new Date().toISOString(),
-    };
-    onSave(newPreset);
+    const cards = buildCards(orderedCards);
+    const saved: CustomPreset = preset
+      ? { ...preset, label: name.trim(), cards }
+      : { id: `custom-${Date.now()}`, label: name.trim(), cards, createdAt: new Date().toISOString() };
+    onSave(saved);
     reset();
   }
 
@@ -243,7 +254,7 @@ export function CustomPresetCreator({ visible, onClose, onSave }: CustomPresetCr
           >
             <Text style={creatorStyles.headerBtnText}>✕</Text>
           </Pressable>
-          <Text style={creatorStyles.headerTitle}>নতুন দ্রুত পথ</Text>
+          <Text style={creatorStyles.headerTitle}>{preset ? 'পথ সম্পাদনা' : 'নতুন দ্রুত পথ'}</Text>
           <Pressable
             accessibilityLabel="সংরক্ষণ করুন"
             disabled={!canSave}
