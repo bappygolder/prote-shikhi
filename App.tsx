@@ -827,6 +827,7 @@ function App() {
         currentCard.id,
         nextCardProgress,
         selectedPresetCards,
+        progressForSelection,
       );
     }
     if (wasJustMastered) {
@@ -834,6 +835,7 @@ function App() {
         nextSession,
         currentCard.id,
         selectedPresetCards,
+        progressForSelection,
       );
     }
 

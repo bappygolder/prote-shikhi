@@ -343,13 +343,18 @@ export function initSessionState(
 function nextUnenteredFromPath(
   path: LetterCard[],
   state: SessionState,
+  progress: ProgressByCard,
 ): LetterCard | null {
   const used = new Set<string>(state.activeSet);
   if (state.prePushedActiveSet) {
     for (const id of state.prePushedActiveSet) used.add(id);
   }
   for (const card of path) {
-    if (!used.has(card.id)) return card;
+    // Skip cards already in the active set AND already-mastered cards so they
+    // never cycle back into the active set after being retired.
+    if (!used.has(card.id) && !getProgressForCard(progress, card.id).mastered) {
+      return card;
+    }
   }
   return null;
 }
@@ -363,11 +368,12 @@ export function applyActiveSetOnCorrect(
   _cardId: string,
   _cardProgress: LetterProgress,
   path: LetterCard[],
+  progress: ProgressByCard,
 ): SessionState {
   if (state.inStruggleMode) return state;
   if (state.activeSet.length >= ACTIVE_SET_STEADY) return state;
 
-  const next = nextUnenteredFromPath(path, state);
+  const next = nextUnenteredFromPath(path, state, progress);
   if (!next) return state;
 
   return {
@@ -380,16 +386,18 @@ export function applyActiveSetOnMastery(
   state: SessionState,
   masteredCardId: string,
   path: LetterCard[],
+  progress: ProgressByCard,
 ): SessionState {
   const remaining = state.activeSet.filter((id) => id !== masteredCardId);
   // The just-mastered card has left the active set but must NOT be re-picked
   // here as the "next un-entered" card. Inject it into the search state's
   // activeSet so nextUnenteredFromPath skips it.
+  // Passing progress ensures previously-mastered cards are also never cycled back.
   let nextActive = remaining;
   const next = nextUnenteredFromPath(path, {
     ...state,
     activeSet: [...remaining, masteredCardId],
-  });
+  }, progress);
   if (next) nextActive = [...remaining, next.id];
 
   return {
