@@ -771,6 +771,7 @@ function App() {
 
   const selectedPreset =
     PRACTICE_PRESETS.find((preset) => preset.id === selectedPresetId) ??
+    customPresets.find((preset) => preset.id === selectedPresetId) ??
     DEFAULT_PRESET;
   const selectedPresetCards = selectedPreset.cards;
   const unlockedCards = useMemo(
