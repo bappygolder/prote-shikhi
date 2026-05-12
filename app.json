@@ -3,7 +3,7 @@
     "name": "PoraShikhi",
     "slug": "porashikhi",
     "scheme": "porashikhi",
-    "version": "1.13.3",
+    "version": "1.13.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

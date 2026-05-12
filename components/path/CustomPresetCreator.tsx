@@ -56,7 +56,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tileSize = useMemo(() => {
     const MODAL_MAX_WIDTH = 540;
     const CONTENT_PADDING_H = 32; // 16px each side from scrollContent.paddingHorizontal
@@ -414,6 +414,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         columnWrapperStyle={creatorStyles.columnWrapper}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        activationDistance={1}
       />
       {onPractice ? (
         <View style={creatorStyles.footer}>
@@ -452,7 +453,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
       {Platform.OS === 'web' ? (
         <View style={creatorStyles.webBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-          <View style={creatorStyles.webInner}>
+          <View style={[creatorStyles.webInner, { maxHeight: windowHeight * 0.88 }]}>
             <SafeAreaView style={[creatorStyles.safeArea, creatorStyles.webSafeArea]}>
               {innerContent}
             </SafeAreaView>
@@ -720,7 +721,7 @@ const creatorStyles = StyleSheet.create({
   tileEditBtn: {
     position: 'absolute',
     top: 4,
-    left: 4,
+    left: 26,
     width: 18,
     height: 18,
     borderRadius: 9,
@@ -737,7 +738,7 @@ const creatorStyles = StyleSheet.create({
   tileRemoveBtn: {
     position: 'absolute',
     top: 4,
-    right: 4,
+    left: 4,
     width: 18,
     height: 18,
     borderRadius: 9,
@@ -804,7 +805,6 @@ const creatorStyles = StyleSheet.create({
   webInner: {
     width: '100%',
     maxWidth: 540,
-    maxHeight: '90%' as unknown as number,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
