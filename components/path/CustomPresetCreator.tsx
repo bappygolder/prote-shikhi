@@ -174,8 +174,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
       return (
         <ScaleDecorator activeScale={1.06}>
           <Pressable
-            onLongPress={drag}
-            delayLongPress={150}
+            onPressIn={drag}
             style={[
               creatorStyles.cardTile,
               { width: tileSize, height: tileSize },
@@ -195,15 +194,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
                 returnKeyType="done"
               />
             ) : (
-              <Pressable
-                onPress={() => {
-                  if (item.type === 'word') {
-                    setEditingId(item.id);
-                    setEditingText(item.word);
-                  }
-                }}
-                style={creatorStyles.tileLabelArea}
-              >
+              <View style={creatorStyles.tileLabelArea}>
                 <Text
                   style={creatorStyles.cardTileText}
                   numberOfLines={1}
@@ -212,6 +203,18 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
                 >
                   {label}
                 </Text>
+              </View>
+            )}
+            {!isEditing && item.type === 'word' && (
+              <Pressable
+                onPress={() => {
+                  setEditingId(item.id);
+                  setEditingText(item.word);
+                }}
+                style={creatorStyles.tileEditBtn}
+                hitSlop={4}
+              >
+                <Text style={creatorStyles.tileEditBtnText}>✎</Text>
               </Pressable>
             )}
             {!isEditing && (
@@ -709,6 +712,23 @@ const creatorStyles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 4,
     paddingVertical: 0,
+  },
+  tileEditBtn: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#e5ddc7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileEditBtnText: {
+    fontSize: 9,
+    color: '#374151',
+    fontWeight: '800',
+    lineHeight: 10,
   },
   tileRemoveBtn: {
     position: 'absolute',
