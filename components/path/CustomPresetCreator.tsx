@@ -409,6 +409,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         renderItem={renderOrderedCard}
         ListHeaderComponent={CreatorHeader}
         contentContainerStyle={creatorStyles.scrollContent}
+        style={creatorStyles.list}
         numColumns={CARD_COLUMNS}
         columnWrapperStyle={creatorStyles.columnWrapper}
         keyboardShouldPersistTaps="handled"
@@ -470,6 +471,9 @@ const creatorStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f5f0e8',
+  },
+  list: {
+    flex: 1,
   },
 
   header: {
