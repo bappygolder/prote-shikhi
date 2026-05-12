@@ -414,7 +414,8 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         columnWrapperStyle={creatorStyles.columnWrapper}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        activationDistance={1}
+        activationDistance={8}
+        dragItemOverflow
       />
       {onPractice ? (
         <View style={creatorStyles.footer}>
