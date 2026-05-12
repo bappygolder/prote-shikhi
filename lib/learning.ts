@@ -17,6 +17,28 @@ export const CYCLES_TO_GROW = 3;
 export const NEW_CARD_PRIORITY_CYCLES = 3;
 export const CYCLE_WRONGS_TO_SHRINK = 2;
 
+// Daily session caps — see docs/plans/bornomala-session-daily-cap-anti-loop.md
+export const SESSION_MAX_DURATION_MS = 12 * 60 * 1000;
+export const SESSION_MAX_ATTEMPTS = 60;
+export const CARD_MAX_ATTEMPTS_PER_SESSION = 10;
+export const SESSION_CAP_STORAGE_PREFIX = 'porashikhi:sessionCap:v1:';
+
+export type SessionCapReason = 'duration' | 'attempts' | 'card';
+
+export function checkSessionCap(input: {
+  attempts: number;
+  startedAtMs: number;
+  cardAttempts: Record<string, number>;
+  nowMs: number;
+}): SessionCapReason | null {
+  if (input.nowMs - input.startedAtMs >= SESSION_MAX_DURATION_MS) return 'duration';
+  if (input.attempts >= SESSION_MAX_ATTEMPTS) return 'attempts';
+  for (const n of Object.values(input.cardAttempts)) {
+    if (n >= CARD_MAX_ATTEMPTS_PER_SESSION) return 'card';
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Build opts
 // ---------------------------------------------------------------------------

@@ -458,6 +458,56 @@ function makeStyles(c: ColorTokens) {
     rightText: {
       color: c.textSuccess,
     },
+    sessionDoneCard: {
+      flex: 1,
+      backgroundColor: c.bgSurface,
+      borderColor: c.borderWarm,
+      borderRadius: 16,
+      borderWidth: 1,
+      paddingHorizontal: 24,
+      paddingVertical: 28,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 16,
+    },
+    sessionDoneHeading: {
+      color: c.textHeading,
+      fontSize: 26,
+      fontWeight: '900' as const,
+      textAlign: 'center' as const,
+      letterSpacing: 0,
+    },
+    sessionDoneSubtitle: {
+      color: c.textBody,
+      fontSize: 16,
+      fontWeight: '600' as const,
+      textAlign: 'center' as const,
+      lineHeight: 24,
+    },
+    sessionDoneStatsRow: {
+      flexDirection: 'row' as const,
+      gap: 18,
+      marginTop: 8,
+    },
+    sessionDoneStat: {
+      alignItems: 'center' as const,
+      minWidth: 64,
+    },
+    sessionDoneStatValue: {
+      color: c.textSuccess,
+      fontSize: 28,
+      fontWeight: '900' as const,
+    },
+    sessionDoneStatLabel: {
+      color: c.textMuted,
+      fontSize: 13,
+      fontWeight: '700' as const,
+      marginTop: 4,
+    },
+    sessionDoneActions: {
+      flexDirection: 'row' as const,
+      gap: 12,
+    },
     lettersScreen: {
       flex: 1,
       gap: 14,

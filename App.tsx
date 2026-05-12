@@ -29,6 +29,7 @@ import { ThemeProvider, useTheme, type ThemePreference } from './lib/theme';
 import { CustomPath, CustomPresetCreator, FlatPath, PathSwitcher, PresetDetailModal, PresetPath, type PathView } from './components/path';
 import {
   applyGrade,
+  checkSessionCap,
   chooseNextCard,
   computeGlobalProgress,
   getProgressForCard,
@@ -40,10 +41,12 @@ import {
   tickCycle,
   PHASE_THRESHOLDS,
   PHASE_CUMULATIVE,
+  SESSION_CAP_STORAGE_PREFIX,
   TOTAL_CORRECT_TO_MASTER,
   SESSION_MASTERY_LEVEL,
   type ProgressByCard,
   type ProgressState,
+  type SessionCapReason,
   type SessionState,
 } from './lib/learning';
 
@@ -97,6 +100,14 @@ type SessionStats = {
   attempts: number;
   correct: number;
   wrong: number;
+  startedAtMs: number;
+  cardAttempts: Record<string, number>;
+};
+
+type SessionDoneState = {
+  presetId: string;
+  reason: SessionCapReason;
+  dateISO: string;
 };
 
 type PracticeList = {
@@ -125,11 +136,17 @@ const PRACTICE_LISTS: PracticeList[] = [
   { id: 'mastered', label: 'শেখা' },
 ];
 
-const initialSessionStats: SessionStats = {
-  attempts: 0,
-  correct: 0,
-  wrong: 0,
-};
+function makeInitialSessionStats(): SessionStats {
+  return { attempts: 0, correct: 0, wrong: 0, startedAtMs: Date.now(), cardAttempts: {} };
+}
+
+function todayDateISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function sessionCapKey(presetId: string): string {
+  return SESSION_CAP_STORAGE_PREFIX + presetId;
+}
 
 function toBanglaNumber(value: number | string) {
   return String(value).replace(/\d/g, (digit) => BANGLA_DIGITS[Number(digit)]);
@@ -569,9 +586,10 @@ const victoryStyles = StyleSheet.create({
 function App() {
   const { isDark, preference, setPreference, styles } = useTheme();
   const [progress, setProgress] = useState<ProgressByCard>({});
-  const [sessionStats, setSessionStats] = useState<SessionStats>(
-    initialSessionStats,
+  const [sessionStats, setSessionStats] = useState<SessionStats>(() =>
+    makeInitialSessionStats(),
   );
+  const [sessionDone, setSessionDone] = useState<SessionDoneState | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState(DEFAULT_PRESET.id);
   const [currentCardId, setCurrentCardId] = useState(DEFAULT_PRESET.cards[0].id);
   const [session, setSession] = useState<SessionState>(() =>
@@ -774,6 +792,33 @@ function App() {
     customPresets.find((preset) => preset.id === selectedPresetId) ??
     DEFAULT_PRESET;
   const selectedPresetCards = selectedPreset.cards;
+
+  useEffect(() => {
+    let cancelled = false;
+    const presetId = selectedPreset.id;
+    const today = todayDateISO();
+    AsyncStorage.getItem(sessionCapKey(presetId))
+      .then((raw) => {
+        if (cancelled) return;
+        if (!raw) {
+          setSessionDone((prev) => (prev?.presetId === presetId ? null : prev));
+          return;
+        }
+        try {
+          const parsed = JSON.parse(raw) as { dateISO?: string; reason?: SessionCapReason };
+          if (parsed?.dateISO === today && parsed?.reason) {
+            setSessionDone({ presetId, reason: parsed.reason, dateISO: today });
+          } else {
+            AsyncStorage.removeItem(sessionCapKey(presetId)).catch(() => {});
+            setSessionDone((prev) => (prev?.presetId === presetId ? null : prev));
+          }
+        } catch {
+          AsyncStorage.removeItem(sessionCapKey(presetId)).catch(() => {});
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedPreset.id]);
   const unlockedCards = useMemo(
     () => getUnlockedCards(selectedPresetCards, progress),
     [progress, selectedPresetCards],
@@ -1026,11 +1071,36 @@ function App() {
     setProgress(gradedProgress);
     setSession(nextSession);
     setCurrentCardId(nextCardId);
-    setSessionStats((c) => ({
-      attempts: c.attempts + 1,
-      correct: c.correct + (wasCorrect ? 1 : 0),
-      wrong: c.wrong + (wasCorrect ? 0 : 1),
-    }));
+    const gradedCardId = currentCard.id;
+    const presetId = selectedPreset.id;
+    setSessionStats((c) => {
+      const nextCardAttempts = {
+        ...c.cardAttempts,
+        [gradedCardId]: (c.cardAttempts[gradedCardId] ?? 0) + 1,
+      };
+      const next: SessionStats = {
+        attempts: c.attempts + 1,
+        correct: c.correct + (wasCorrect ? 1 : 0),
+        wrong: c.wrong + (wasCorrect ? 0 : 1),
+        startedAtMs: c.startedAtMs,
+        cardAttempts: nextCardAttempts,
+      };
+      const reason = checkSessionCap({
+        attempts: next.attempts,
+        startedAtMs: next.startedAtMs,
+        cardAttempts: next.cardAttempts,
+        nowMs: Date.now(),
+      });
+      if (reason) {
+        const dateISO = todayDateISO();
+        setSessionDone({ presetId, reason, dateISO });
+        AsyncStorage.setItem(
+          sessionCapKey(presetId),
+          JSON.stringify({ dateISO, reason }),
+        ).catch(() => {});
+      }
+      return next;
+    });
   }
 
   function handleReset() {
@@ -1040,7 +1110,8 @@ function App() {
       () => {
         setProgress({});
         setSession(initSessionState(DEFAULT_PRESET.cards, {}));
-        setSessionStats(initialSessionStats);
+        setSessionStats(makeInitialSessionStats());
+        setSessionDone(null);
         setSelectedPresetId(DEFAULT_PRESET.id);
         setCurrentCardId(DEFAULT_PRESET.cards[0].id);
         setSelectedPracticeList('unlocked');
@@ -1049,8 +1120,20 @@ function App() {
         AsyncStorage.removeItem(STORAGE_KEY).catch(() => {
           // Reset still updates the current screen even if storage cleanup fails.
         });
+        AsyncStorage.getAllKeys()
+          .then((keys) => {
+            const capKeys = keys.filter((k) => k.startsWith(SESSION_CAP_STORAGE_PREFIX));
+            if (capKeys.length) AsyncStorage.multiRemove(capKeys).catch(() => {});
+          })
+          .catch(() => {});
       },
     );
+  }
+
+  function handleDevResetSessionCap() {
+    setSessionDone(null);
+    setSessionStats(makeInitialSessionStats());
+    AsyncStorage.removeItem(sessionCapKey(selectedPreset.id)).catch(() => {});
   }
 
   function handleResetLetter(card: LetterCard) {
@@ -1282,6 +1365,67 @@ function App() {
                 />
               )}
             </ScrollView>
+          </View>
+        ) : currentTab === 'practice' &&
+          sessionDone &&
+          sessionDone.presetId === selectedPreset.id ? (
+          <View style={styles.practiceContent}>
+            <View style={styles.progressStack}>
+              <ProgressBar
+                completed={masteredCount}
+                label="মোট শেখা"
+                percent={totalMasteryPercent}
+                total={selectedPresetCards.length}
+              />
+            </View>
+            <View style={styles.sessionDoneCard}>
+              <Text style={styles.sessionDoneHeading}>দারুণ! আজকের পড়া শেষ</Text>
+              <Text style={styles.sessionDoneSubtitle}>
+                {sessionDone.reason === 'card'
+                  ? 'আজকের জন্য যথেষ্ট অনুশীলন হয়েছে। কাল আবার চেষ্টা করুন।'
+                  : 'আগামীকাল আবার আসুন — এই তালিকা চালিয়ে যেতে।'}
+              </Text>
+              <View style={styles.sessionDoneStatsRow}>
+                <View style={styles.sessionDoneStat}>
+                  <Text style={styles.sessionDoneStatValue}>{toBanglaNumber(sessionStats.correct)}</Text>
+                  <Text style={styles.sessionDoneStatLabel}>ঠিক</Text>
+                </View>
+                <View style={styles.sessionDoneStat}>
+                  <Text style={styles.sessionDoneStatValue}>{toBanglaNumber(sessionStats.wrong)}</Text>
+                  <Text style={styles.sessionDoneStatLabel}>ভুল</Text>
+                </View>
+                <View style={styles.sessionDoneStat}>
+                  <Text style={styles.sessionDoneStatValue}>{toBanglaNumber(sessionStats.attempts)}</Text>
+                  <Text style={styles.sessionDoneStatLabel}>মোট</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.sessionDoneActions}>
+              <Pressable
+                accessibilityLabel="অন্য তালিকা দেখুন"
+                onPress={() => setCurrentTab('letters')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.rightButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={[styles.actionText, styles.rightText]}>অন্য তালিকা</Text>
+              </Pressable>
+              {__DEV__ ? (
+                <Pressable
+                  accessibilityLabel="রিসেট (টেস্ট)"
+                  onPress={handleDevResetSessionCap}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    styles.wrongButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={[styles.actionText, styles.wrongText]}>রিসেট (টেস্ট)</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : currentTab === 'practice' ? (
           <View style={styles.practiceContent}>
