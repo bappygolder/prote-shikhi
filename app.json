@@ -3,7 +3,7 @@
     "name": "PoraShikhi",
     "slug": "porashikhi",
     "scheme": "porashikhi",
-    "version": "1.13.5",
+    "version": "1.14.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "3",
+      "buildNumber": "4",
       "bundleIdentifier": "au.com.olab.porashikhi"
     },
     "android": {
@@ -25,7 +25,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "versionCode": 3,
+      "versionCode": 4,
       "package": "au.com.olab.porashikhi"
     },
     "web": {
@@ -34,7 +34,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "lastUpdated": "Monday, 11 May 2026"
+      "lastUpdated": "Tuesday, 12 May 2026"
     }
   }
 }
