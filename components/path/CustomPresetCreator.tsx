@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {
@@ -54,6 +55,15 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
   const [showWordHint, setShowWordHint] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+
+  const { width: windowWidth } = useWindowDimensions();
+  const tileSize = useMemo(() => {
+    const MODAL_MAX_WIDTH = 540;
+    const CONTENT_PADDING_H = 32; // 16px each side from scrollContent.paddingHorizontal
+    const TILE_GAP = 8;
+    const contentWidth = Math.min(windowWidth, MODAL_MAX_WIDTH) - CONTENT_PADDING_H;
+    return Math.floor((contentWidth - TILE_GAP * (CARD_COLUMNS - 1)) / CARD_COLUMNS);
+  }, [windowWidth]);
 
   useEffect(() => {
     if (!visible || !preset) return;
@@ -166,7 +176,11 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
           <Pressable
             onLongPress={drag}
             delayLongPress={150}
-            style={[creatorStyles.cardTile, isActive && creatorStyles.cardTileActive]}
+            style={[
+              creatorStyles.cardTile,
+              { width: tileSize, height: tileSize },
+              isActive && creatorStyles.cardTileActive,
+            ]}
           >
             {isEditing ? (
               <TextInput
@@ -190,10 +204,22 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
                 }}
                 style={creatorStyles.tileLabelArea}
               >
-                <Text style={creatorStyles.cardTileText} numberOfLines={1} adjustsFontSizeToFit>
+                <Text
+                  style={creatorStyles.cardTileText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.5}
+                >
                   {label}
                 </Text>
               </Pressable>
+            )}
+            {!isEditing && (
+              <View style={creatorStyles.tileDragHandle}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={creatorStyles.tileDragDot} />
+                ))}
+              </View>
             )}
             <Pressable
               onPress={() => removeCard(item)}
@@ -642,10 +668,9 @@ const creatorStyles = StyleSheet.create({
   // Square tile grid
   columnWrapper: {
     gap: 8,
+    justifyContent: 'flex-start',
   },
   cardTile: {
-    flex: 1,
-    aspectRatio: 1,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e5ddc7',
@@ -669,6 +694,7 @@ const creatorStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+    paddingHorizontal: 8,
   },
   cardTileText: {
     fontSize: 26,
@@ -700,6 +726,22 @@ const creatorStyles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '800',
     lineHeight: 10,
+  },
+  tileDragHandle: {
+    position: 'absolute',
+    bottom: 6,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 3,
+    pointerEvents: 'none',
+  },
+  tileDragDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#c8c0ad',
   },
 
   footer: {
