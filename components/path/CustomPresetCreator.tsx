@@ -42,12 +42,18 @@ const LETTER_SECTIONS: { label: string; cards: LetterCard[] }[] = [
   { label: 'সংখ্যা', cards: NUMBER_CARDS },
 ];
 
+// numColumns is a valid FlatList prop preserved through DraggableFlatListProps<T>
+// (Modify<FlatListProps<T>, overrides> keeps props not in the overrides object)
+const CARD_COLUMNS = 3;
+
 export function CustomPresetCreator({ visible, onClose, onSave, preset, onPractice }: CustomPresetCreatorProps) {
   const [name, setName] = useState('');
   const [orderedCards, setOrderedCards] = useState<OrderedCard[]>([]);
   const [wordInput, setWordInput] = useState('');
-  const [letterPickerExpanded, setLetterPickerExpanded] = useState(true);
+  const [letterPickerExpanded, setLetterPickerExpanded] = useState(false);
   const [showWordHint, setShowWordHint] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   useEffect(() => {
     if (!visible || !preset) return;
@@ -65,8 +71,10 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
     setName('');
     setOrderedCards([]);
     setWordInput('');
-    setLetterPickerExpanded(true);
+    setLetterPickerExpanded(false);
     setShowWordHint(false);
+    setEditingId(null);
+    setEditingText('');
   }
 
   function handleClose() {
@@ -106,6 +114,19 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
     });
   }
 
+  function commitEdit() {
+    if (!editingId || !editingText.trim()) {
+      setEditingId(null);
+      return;
+    }
+    setOrderedCards((prev) =>
+      prev.map((c) =>
+        c.type === 'word' && c.id === editingId ? { ...c, word: editingText.trim() } : c,
+      ),
+    );
+    setEditingId(null);
+  }
+
   function buildCards(cards: OrderedCard[]): LetterCard[] {
     return cards.map((item, i) => {
       if (item.type === 'letter') return item.card;
@@ -137,30 +158,60 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
             ? `◌${item.card.letter}`
             : item.card.letter
           : item.word;
+
+      const isEditing = item.type === 'word' && editingId === item.id;
+
       return (
-        <ScaleDecorator>
-          <View style={[creatorStyles.cardRow, isActive && creatorStyles.cardRowActive]}>
-            <Text style={creatorStyles.cardRowText}>{label}</Text>
+        <ScaleDecorator activeScale={1.06}>
+          <Pressable
+            onLongPress={drag}
+            delayLongPress={150}
+            style={[creatorStyles.cardTile, isActive && creatorStyles.cardTileActive]}
+          >
+            {isEditing ? (
+              <TextInput
+                style={creatorStyles.tileEditInput}
+                value={editingText}
+                onChangeText={setEditingText}
+                onSubmitEditing={commitEdit}
+                onBlur={commitEdit}
+                autoFocus
+                maxLength={20}
+                textAlign="center"
+                returnKeyType="done"
+              />
+            ) : (
+              <Pressable
+                onPress={() => {
+                  if (item.type === 'word') {
+                    setEditingId(item.id);
+                    setEditingText(item.word);
+                  }
+                }}
+                style={creatorStyles.tileLabelArea}
+              >
+                <Text style={creatorStyles.cardTileText} numberOfLines={1} adjustsFontSizeToFit>
+                  {label}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
-              onPressIn={drag}
-              style={creatorStyles.dragHandleBtn}
-              accessibilityLabel="টেনে সরান"
+              onPress={() => removeCard(item)}
+              style={creatorStyles.tileRemoveBtn}
+              hitSlop={6}
             >
-              <Text style={creatorStyles.dragHandle}>⠿</Text>
+              <Text style={creatorStyles.tileRemoveBtnText}>✕</Text>
             </Pressable>
-            <Pressable onPress={() => removeCard(item)} style={creatorStyles.cardRowRemove}>
-              <Text style={creatorStyles.cardRowRemoveText}>✕</Text>
-            </Pressable>
-          </View>
+          </Pressable>
         </ScaleDecorator>
       );
     },
-    [removeCard],
+    [editingId, editingText, removeCard, commitEdit],
   );
 
   const CreatorHeader = (
     <>
-      {/* Name input */}
+      {/* Path name */}
       <View style={creatorStyles.section}>
         <Text style={creatorStyles.sectionLabel}>পথের নাম</Text>
         <TextInput
@@ -174,7 +225,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         />
       </View>
 
-      {/* Letter selection — collapsible */}
+      {/* Letter picker — collapsible, hidden by default */}
       <View style={creatorStyles.section}>
         <Pressable
           accessibilityLabel={letterPickerExpanded ? 'অক্ষর তালিকা লুকান' : 'অক্ষর তালিকা দেখান'}
@@ -187,9 +238,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
           <Text style={creatorStyles.sectionLabel}>
             অক্ষর বাছুন
             {letterCount > 0 ? (
-              <Text style={creatorStyles.sectionCount}>
-                {' '}· {letterCount}টি বাছা হয়েছে
-              </Text>
+              <Text style={creatorStyles.sectionCount}> · {letterCount}টি বাছা হয়েছে</Text>
             ) : null}
           </Text>
           <Text style={creatorStyles.sectionToggleIcon}>
@@ -297,7 +346,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
 
   const innerContent = (
     <>
-      {/* Header */}
+      {/* Modal header */}
       <View style={creatorStyles.header}>
         <Pressable
           accessibilityLabel="বন্ধ করুন"
@@ -323,6 +372,7 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         </Pressable>
       </View>
 
+      {/* @ts-ignore — numColumns is a valid FlatList prop preserved by DraggableFlatListProps */}
       <DraggableFlatList
         data={orderedCards}
         keyExtractor={(item) => (item.type === 'letter' ? item.card.id : item.id)}
@@ -330,6 +380,8 @@ export function CustomPresetCreator({ visible, onClose, onSave, preset, onPracti
         renderItem={renderOrderedCard}
         ListHeaderComponent={CreatorHeader}
         contentContainerStyle={creatorStyles.scrollContent}
+        numColumns={CARD_COLUMNS}
+        columnWrapperStyle={creatorStyles.columnWrapper}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       />
@@ -440,12 +492,12 @@ const creatorStyles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingBottom: 40,
-    gap: 24,
+    gap: 16,
     paddingTop: 16,
   },
 
   section: {
-    gap: 10,
+    gap: 8,
   },
   sectionLabel: {
     fontSize: 13,
@@ -458,11 +510,6 @@ const creatorStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#f4512a',
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: -6,
   },
   sectionLabelRow: {
     flexDirection: 'row',
@@ -591,47 +638,70 @@ const creatorStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+
+  // Square tile grid
+  columnWrapper: {
+    gap: 8,
+  },
+  cardTile: {
+    flex: 1,
+    aspectRatio: 1,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#e5ddc7',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    overflow: 'hidden',
   },
-  cardRowActive: {
+  cardTileActive: {
+    borderColor: '#f4512a',
+    backgroundColor: '#fff1ee',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-    backgroundColor: '#f0ece0',
+    shadowRadius: 6,
+    elevation: 6,
   },
-  cardRowText: {
+  tileLabelArea: {
     flex: 1,
-    fontSize: 22,
-    color: '#111827',
-    fontWeight: '600',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
-  dragHandleBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  dragHandle: {
-    fontSize: 18,
-    color: '#9ca3af',
-  },
-  cardRowRemove: {
-    padding: 4,
-  },
-  cardRowRemoveText: {
-    fontSize: 14,
-    color: '#9ca3af',
+  cardTileText: {
+    fontSize: 26,
     fontWeight: '700',
+    color: '#111827',
   },
+  tileEditInput: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: 4,
+    paddingVertical: 0,
+  },
+  tileRemoveBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#e5ddc7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileRemoveBtnText: {
+    fontSize: 9,
+    color: '#6b7280',
+    fontWeight: '800',
+    lineHeight: 10,
+  },
+
   footer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
